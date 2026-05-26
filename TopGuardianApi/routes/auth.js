@@ -132,4 +132,54 @@ router.post('/refresh', (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /auth/training-login:
+ *   post:
+ *     summary: Login for employees in the Training App
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - ruc
+ *               - documentNumber
+ *             properties:
+ *               ruc:
+ *                 type: string
+ *               documentNumber:
+ *                 type: string
+ */
+router.post('/training-login', async (req, res) => {
+  try {
+    const { ruc, documentNumber } = req.body;
+
+    // 1. Buscar empresa por RUC
+    const company = await db.getAsync('SELECT * FROM companies WHERE ruc = ?', [ruc]);
+    if (!company) return res.status(401).json({ error: 'Empresa no encontrada con ese RUC.' });
+
+    // 2. Buscar empleado por Documento
+    const employee = await db.getAsync('SELECT * FROM employees WHERE document_number = ? AND company_id = ?', [documentNumber, company.id]);
+    if (!employee) return res.status(401).json({ error: 'Empleado no encontrado en esta empresa.' });
+    if (!employee.active) return res.status(403).json({ error: 'El acceso de este empleado está inactivo.' });
+
+    // 3. Generar JWT
+    const token = jwt.sign({ id: employee.id, companyId: company.id, role: 'Employee', type: 'training_app' }, 'your-secret-key', { expiresIn: '24h' });
+
+    res.json({
+      employee: {
+        id: String(employee.id), firstName: employee.first_name, lastName: employee.last_name,
+        documentNumber: employee.document_number, companyId: String(company.id), companyName: company.name
+      },
+      accessToken: token
+    });
+  } catch (err) {
+    console.error("Error en training-login:", err);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+});
+
 module.exports = router;

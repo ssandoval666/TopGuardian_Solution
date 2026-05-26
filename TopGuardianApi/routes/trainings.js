@@ -231,6 +231,44 @@ router.delete('/:id', authenticateToken, async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /trainings/{id}/full:
+ *   get:
+ *     summary: Get full training details including PDF and Questionnaire for Employee App
+ *     tags: [Trainings]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Full training data
+ */
+router.get('/:id/full', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const training = await db.getAsync('SELECT * FROM trainings WHERE id = ?', [id]);
+    if (!training) return res.status(404).json({ error: 'Capacitación no encontrada' });
+
+    const qRow = await db.getAsync('SELECT * FROM training_questionnaires WHERE training_id = ?', [id]);
+    const questionnaire = qRow ? { minPassingScore: qRow.min_passing_score, questions: JSON.parse(qRow.questions_json) } : { minPassingScore: 0, questions: [] };
+
+    res.json({
+      ...training,
+      pdfData: training.pdf_data ? Array.from(training.pdf_data) : [],
+      thumbnailData: training.thumbnail_data ? Array.from(training.thumbnail_data) : [],
+      questionnaire
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ---- Training Questionnaires ----
 
 /**
