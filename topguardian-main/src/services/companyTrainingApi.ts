@@ -101,9 +101,8 @@ export const apiFetchCompanyTrainingAlerts = async (companyId: string): Promise<
 
 /** Dashboard stats for a company */
 export const apiFetchCompanyTrainingStats = async (companyId: string): Promise<{ completed: number; pending: number; pendingList: CompanyTraining[] }> => {
-  await delay(300);
-  const all = mockAssignmentsDB
-    .filter((a) => a.companyId === companyId)
+  const trainings = await apiFetchCompanyTrainings(companyId);
+  const all = trainings
     .map((a) => ({ ...a, status: computeStatus(a) }));
   const completed = all.filter((a) => a.status === "completed").length;
   const pendingList = all.filter((a) => a.status !== "completed");

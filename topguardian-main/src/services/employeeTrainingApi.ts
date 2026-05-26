@@ -97,8 +97,8 @@ export const apiUnassignTraining = async (id: string): Promise<void> => {
 /** Fetch all assignments across all employees to compute global notifications */
 export const apiFetchAllTrainingAlerts = async (): Promise<EmployeeTraining[]> => {
   // This might need a specific endpoint for alerts, for now we'll get all and filter client-side
-  return apiCall('/trainings/employee/alerts');
-};
+  const alerts: EmployeeTraining[] = await apiCall('/trainings/employee/alerts');
+  return alerts
     .map((a) => ({ ...a, status: computeStatus(a) }))
     .filter((a) => a.status === "expired" || a.status === "expiring_soon");
 };
