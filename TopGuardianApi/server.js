@@ -293,14 +293,7 @@ const insertMockData = async () => {
     // Insert mock data
     // Companies
     const companies = [
-      ['Acme Corp', '20100001234', 'Av. Principal 123', '01-2345678', 'info@acme.com'],
-      ['Globex SA', '20200005678', 'Calle Secundaria 456', '01-8765432', 'contacto@globex.com'],
-      ['Initech SRL', '20300009012', 'Jr. Tercera 789', '01-1122334', 'admin@initech.com'],
-      ['Umbrella Corp', '20400003456', 'Av. Ciencia 321', '01-5566778', 'info@umbrella.com'],
-      ['Wayne Enterprises', '20500007890', 'Gotham Blvd 100', '01-9900112', 'bruce@wayne.com'],
-      ['Stark Industries', '20600001122', 'Malibu Point 10880', '01-3344556', 'tony@stark.com'],
-      ['Cyberdyne Systems', '20700003344', 'Tech Park 200', '01-7788990', 'info@cyberdyne.com'],
-      ['Oscorp', '20800005566', 'New York 5th Ave', '01-1234000', 'norman@oscorp.com']
+      ['Acme Corp', '20100001234', 'Av. Principal 123', '01-2345678', 'info@acme.com']
     ];
 
     for (const company of companies) {
