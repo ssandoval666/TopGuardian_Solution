@@ -13,11 +13,6 @@ interface Notification {
   type: "info" | "warning" | "error";
 }
 
-const baseNotifications: Notification[] = [
-  { id: "sys-1", title: "Actualización", message: "El sistema se actualizó correctamente", time: "Hace 1 hora", read: true, type: "info" },
-  { id: "sys-2", title: "Reporte listo", message: "Tu reporte mensual está disponible", time: "Hace 3 horas", read: true, type: "info" },
-];
-
 const alertToNotification = (a: CompanyTraining): Notification => ({
   id: `alert-${a.id}`,
   title: a.status === "expired" ? "Capacitación vencida" : "Próxima a vencer",
@@ -30,13 +25,13 @@ const alertToNotification = (a: CompanyTraining): Notification => ({
 const NotificationPanel = () => {
   const { selectedCompany } = useApp();
   const [open, setOpen] = useState(false);
-  const [notifications, setNotifications] = useState<Notification[]>(baseNotifications);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
 
   useEffect(() => {
     if (!selectedCompany) return;
     apiFetchCompanyTrainingAlerts(selectedCompany.id).then((alerts) => {
       const alertNotifs = alerts.map(alertToNotification);
-      setNotifications([...alertNotifs, ...baseNotifications]);
+      setNotifications(alertNotifs);
     });
   }, [selectedCompany]);
 
