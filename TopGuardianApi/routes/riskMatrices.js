@@ -26,46 +26,20 @@ router.get('/', authenticateToken, async (req, res) => {
     const { companyId } = req.query;
     const matrices = await db.allAsync(`
       SELECT rm.*,
-             GROUP_CONCAT(
-               JSON_OBJECT(
-                 'id', rms.id,
-                 'name', rms.name
-               )
-             ) as sectors,
-             GROUP_CONCAT(
-               JSON_OBJECT(
-                 'id', rmh.id,
-                 'name', rmh.name,
-                 'category', rmh.category
-               )
-             ) as hazards,
-             GROUP_CONCAT(
-               JSON_OBJECT(
-                 'id', rmc.id,
-                 'hazardId', rmc.hazard_id,
-                 'sectorId', rmc.sector_id,
-                 'probability', rmc.probability,
-                 'severity', rmc.severity,
-                 'riskScore', rmc.risk_score,
-                 'riskLevel', rmc.risk_level,
-                 'controlMeasure', rmc.control_measure
-               )
-             ) as cells
+             (SELECT JSON_GROUP_ARRAY(JSON_OBJECT('id', id, 'name', name)) FROM risk_matrix_sectors WHERE matrix_id = rm.id) as sectors,
+             (SELECT JSON_GROUP_ARRAY(JSON_OBJECT('id', id, 'name', name, 'category', category)) FROM risk_matrix_hazards WHERE matrix_id = rm.id) as hazards,
+             (SELECT JSON_GROUP_ARRAY(JSON_OBJECT('id', id, 'hazardId', hazard_id, 'sectorId', sector_id, 'probability', probability, 'severity', severity, 'riskScore', risk_score, 'riskLevel', risk_level, 'controlMeasure', control_measure)) FROM risk_matrix_cells WHERE matrix_id = rm.id) as cells
       FROM risk_matrices rm
-      LEFT JOIN risk_matrix_sectors rms ON rm.id = rms.matrix_id
-      LEFT JOIN risk_matrix_hazards rmh ON rm.id = rmh.matrix_id
-      LEFT JOIN risk_matrix_cells rmc ON rm.id = rmc.matrix_id
       WHERE rm.company_id = ?
-      GROUP BY rm.id
       ORDER BY rm.date DESC
     `, [companyId]);
 
     // Parse JSON data
     const matricesWithData = matrices.map(matrix => ({
       ...matrix,
-      sectors: matrix.sectors ? JSON.parse(`[${matrix.sectors}]`) : [],
-      hazards: matrix.hazards ? JSON.parse(`[${matrix.hazards}]`) : [],
-      cells: matrix.cells ? JSON.parse(`[${matrix.cells}]`) : []
+      sectors: matrix.sectors ? JSON.parse(matrix.sectors) : [],
+      hazards: matrix.hazards ? JSON.parse(matrix.hazards) : [],
+      cells: matrix.cells ? JSON.parse(matrix.cells) : []
     }));
 
     res.json(matricesWithData);
@@ -183,47 +157,11 @@ router.post('/', authenticateToken, async (req, res) => {
     }
 
     // Get the complete matrix
-    const matrix = await db.getAsync(`
-      SELECT rm.*,
-             GROUP_CONCAT(
-               JSON_OBJECT(
-                 'id', rms.id,
-                 'name', rms.name
-               )
-             ) as sectors,
-             GROUP_CONCAT(
-               JSON_OBJECT(
-                 'id', rmh.id,
-                 'name', rmh.name,
-                 'category', rmh.category
-               )
-             ) as hazards,
-             GROUP_CONCAT(
-               JSON_OBJECT(
-                 'id', rmc.id,
-                 'hazardId', rmc.hazard_id,
-                 'sectorId', rmc.sector_id,
-                 'probability', rmc.probability,
-                 'severity', rmc.severity,
-                 'riskScore', rmc.risk_score,
-                 'riskLevel', rmc.risk_level,
-                 'controlMeasure', rmc.control_measure
-               )
-             ) as cells
-      FROM risk_matrices rm
-      LEFT JOIN risk_matrix_sectors rms ON rm.id = rms.matrix_id
-      LEFT JOIN risk_matrix_hazards rmh ON rm.id = rmh.matrix_id
-      LEFT JOIN risk_matrix_cells rmc ON rm.id = rmc.matrix_id
-      WHERE rm.id = ?
-      GROUP BY rm.id
-    `, [matrixId]);
+    const matrix = await db.getAsync('SELECT * FROM risk_matrices WHERE id = ?', [matrixId]);
 
-    const matrixWithData = {
-      ...matrix,
-      sectors: matrix.sectors ? JSON.parse(`[${matrix.sectors}]`) : [],
-      hazards: matrix.hazards ? JSON.parse(`[${matrix.hazards}]`) : [],
-      cells: matrix.cells ? JSON.parse(`[${matrix.cells}]`) : []
-    };
+    // Since it's a new matrix, we know the related arrays are empty,
+    // but we send them for consistency with the GET endpoint.
+    const matrixWithData = { ...matrix, sectors: [], hazards: [], cells: [] };
 
     res.status(201).json(matrixWithData);
   } catch (err) {
@@ -287,75 +225,49 @@ router.put('/:id', authenticateToken, async (req, res) => {
       await db.runAsync(`UPDATE risk_matrices SET ${updateFields.join(', ')} WHERE id = ?`, params);
     }
 
-    // For simplicity, we'll assume sectors, hazards, and cells are replaced entirely
-    // In a real app, you'd want more sophisticated update logic
-    if (sectors) {
-      await db.runAsync('DELETE FROM risk_matrix_sectors WHERE matrix_id = ?', [id]);
-      for (const sector of sectors) {
-        await db.runAsync('INSERT INTO risk_matrix_sectors (matrix_id, name) VALUES (?, ?)', [id, sector.name]);
-      }
+    // 1. Eliminar relaciones antiguas en orden para evitar problemas de Foreign Key
+    await db.runAsync('DELETE FROM risk_matrix_cells WHERE matrix_id = ?', [id]);
+    await db.runAsync('DELETE FROM risk_matrix_hazards WHERE matrix_id = ?', [id]);
+    await db.runAsync('DELETE FROM risk_matrix_sectors WHERE matrix_id = ?', [id]);
+
+    // 2. Insertar sectores y mapear los IDs temporales a los nuevos IDs numéricos
+    const sectorIdMap = {};
+    for (const sector of (sectors || [])) {
+      const result = await db.runAsync('INSERT INTO risk_matrix_sectors (matrix_id, name) VALUES (?, ?)', [id, sector.name]);
+      sectorIdMap[sector.id] = result.lastID;
     }
 
-    if (hazards) {
-      await db.runAsync('DELETE FROM risk_matrix_hazards WHERE matrix_id = ?', [id]);
-      for (const hazard of hazards) {
-        await db.runAsync('INSERT INTO risk_matrix_hazards (matrix_id, name, category) VALUES (?, ?, ?)', [id, hazard.name, hazard.category]);
-      }
+    // 3. Insertar peligros y mapear IDs
+    const hazardIdMap = {};
+    for (const hazard of (hazards || [])) {
+      const result = await db.runAsync('INSERT INTO risk_matrix_hazards (matrix_id, name, category) VALUES (?, ?, ?)', [id, hazard.name, hazard.category]);
+      hazardIdMap[hazard.id] = result.lastID;
     }
 
-    if (cells) {
-      await db.runAsync('DELETE FROM risk_matrix_cells WHERE matrix_id = ?', [id]);
-      for (const cell of cells) {
-        await db.runAsync(
-          'INSERT INTO risk_matrix_cells (matrix_id, hazard_id, sector_id, probability, severity, risk_score, risk_level, control_measure) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-          [id, cell.hazardId, cell.sectorId, cell.probability, cell.severity, cell.riskScore, cell.riskLevel, cell.controlMeasure]
-        );
-      }
+    // 4. Insertar celdas utilizando los nuevos IDs de SQLite (en lugar de los de React)
+    for (const cell of (cells || [])) {
+      const dbSectorId = sectorIdMap[cell.sectorId] || cell.sectorId;
+      const dbHazardId = hazardIdMap[cell.hazardId] || cell.hazardId;
+      await db.runAsync(
+        'INSERT INTO risk_matrix_cells (matrix_id, hazard_id, sector_id, probability, severity, risk_score, risk_level, control_measure) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [id, dbHazardId, dbSectorId, cell.probability, cell.severity, cell.riskScore, cell.riskLevel, cell.controlMeasure]
+      );
     }
 
     // Get updated matrix
-    const matrix = await db.getAsync(`
-      SELECT rm.*,
-             GROUP_CONCAT(
-               JSON_OBJECT(
-                 'id', rms.id,
-                 'name', rms.name
-               )
-             ) as sectors,
-             GROUP_CONCAT(
-               JSON_OBJECT(
-                 'id', rmh.id,
-                 'name', rmh.name,
-                 'category', rmh.category
-               )
-             ) as hazards,
-             GROUP_CONCAT(
-               JSON_OBJECT(
-                 'id', rmc.id,
-                 'hazardId', rmc.hazard_id,
-                 'sectorId', rmc.sector_id,
-                 'probability', rmc.probability,
-                 'severity', rmc.severity,
-                 'riskScore', rmc.risk_score,
-                 'riskLevel', rmc.risk_level,
-                 'controlMeasure', rmc.control_measure
-               )
-             ) as cells
-      FROM risk_matrices rm
-      LEFT JOIN risk_matrix_sectors rms ON rm.id = rms.matrix_id
-      LEFT JOIN risk_matrix_hazards rmh ON rm.id = rmh.matrix_id
-      LEFT JOIN risk_matrix_cells rmc ON rm.id = rmc.matrix_id
-      WHERE rm.id = ?
-      GROUP BY rm.id
-    `, [id]);
+    const matrix = await db.getAsync(`SELECT rm.*,
+      (SELECT JSON_GROUP_ARRAY(JSON_OBJECT('id', id, 'name', name)) FROM risk_matrix_sectors WHERE matrix_id = rm.id) as sectors,
+      (SELECT JSON_GROUP_ARRAY(JSON_OBJECT('id', id, 'name', name, 'category', category)) FROM risk_matrix_hazards WHERE matrix_id = rm.id) as hazards,
+      (SELECT JSON_GROUP_ARRAY(JSON_OBJECT('id', id, 'hazardId', hazard_id, 'sectorId', sector_id, 'probability', probability, 'severity', severity, 'riskScore', risk_score, 'riskLevel', risk_level, 'controlMeasure', control_measure)) FROM risk_matrix_cells WHERE matrix_id = rm.id) as cells
+      FROM risk_matrices rm WHERE rm.id = ?`, [id]);
 
     if (!matrix) return res.status(404).json({ error: 'Matriz no encontrada' });
 
     const matrixWithData = {
       ...matrix,
-      sectors: matrix.sectors ? JSON.parse(`[${matrix.sectors}]`) : [],
-      hazards: matrix.hazards ? JSON.parse(`[${matrix.hazards}]`) : [],
-      cells: matrix.cells ? JSON.parse(`[${matrix.cells}]`) : []
+      sectors: matrix.sectors ? JSON.parse(matrix.sectors) : [],
+      hazards: matrix.hazards ? JSON.parse(matrix.hazards) : [],
+      cells: matrix.cells ? JSON.parse(matrix.cells) : []
     };
 
     res.json(matrixWithData);

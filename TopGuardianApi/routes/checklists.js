@@ -181,10 +181,17 @@ router.get('/visits', authenticateToken, async (req, res) => {
     `, [companyId]);
 
     // Parse the JSON entries
-    const visitsWithEntries = visits.map(visit => ({
-      ...visit,
-      entries: visit.entries ? JSON.parse(`[${visit.entries}]`) : []
-    }));
+    const visitsWithEntries = visits.map(visit => {
+      const rawEntries = visit.entries ? JSON.parse(`[${visit.entries}]`) : [];
+      const cleanedEntries = rawEntries
+        .filter(e => e.itemId !== null) // Remove null entries from LEFT JOIN on visits with no entries
+        .map(e => ({
+          ...e,
+          // SQLite returns 0/1 for booleans, convert to true/false
+          compliant: e.compliant === 1 ? true : (e.compliant === 0 ? false : null)
+        }));
+      return { ...visit, entries: cleanedEntries };
+    });
 
     res.json(visitsWithEntries);
   } catch (err) {
@@ -271,7 +278,7 @@ router.post('/visits', authenticateToken, async (req, res) => {
       entries: visitEntries.map(entry => ({
         itemId: entry.item_id,
         itemName: entry.itemName,
-        compliant: entry.compliant,
+        compliant: entry.compliant === 1 ? true : (entry.compliant === 0 ? false : null),
         observations: entry.observations
       }))
     });
@@ -364,7 +371,7 @@ router.put('/visits/:id', authenticateToken, async (req, res) => {
       entries: visitEntries.map(entry => ({
         itemId: entry.item_id,
         itemName: entry.itemName,
-        compliant: entry.compliant,
+        compliant: entry.compliant === 1 ? true : (entry.compliant === 0 ? false : null),
         observations: entry.observations
       }))
     });

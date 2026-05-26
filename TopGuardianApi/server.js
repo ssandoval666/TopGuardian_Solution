@@ -23,12 +23,13 @@ app.use(cors());
 
 // Custom JSON parser with error handling
 app.use(express.json({
+  limit: '50mb', // Aumentado para permitir la subida de archivos como array de bytes
   verify: (req, res, buf, encoding) => {
     // This captures the raw body before parsing
     req.rawBody = buf.toString(encoding);
   }
 }));
-app.use(express.urlencoded({ extended: true }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // Database setup
 const dbPath = path.join(__dirname, 'TopGuardian_Api.db');

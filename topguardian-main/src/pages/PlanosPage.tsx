@@ -68,11 +68,13 @@ const PlanosPage = () => {
   // Selected group for editing
   const [selectedGroup, setSelectedGroup] = useState<CompanyGroup | null>(null);
   const [carouselIndex, setCarouselIndex] = useState(0);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   // New planos dialog
   const [showNew, setShowNew] = useState(false);
   const [newCompanyId, setNewCompanyId] = useState("");
   const [newItems, setNewItems] = useState<{ name: string; file: File | null }[]>([{ name: "", file: null }]);
+  const [isSaving, setIsSaving] = useState(false);
 
   // Delete confirmation
   const [deletingPlano, setDeletingPlano] = useState<Plano | null>(null);
@@ -90,14 +92,26 @@ const PlanosPage = () => {
       const allResults = await Promise.all(
         companies.map((c) => apiFetchPlanos(c.id))
       );
-      const flat = allResults.flat();
+      
+      // Normalizar propiedades del backend (snake_case a camelCase) y asegurar tipos
+      const flat = allResults.flat().filter(Boolean).map((p: any) => {
+        const rawData = p.fileData || p.file_data;
+        const parsedData = rawData?.data ? rawData.data : rawData;
+        return {
+          ...p,
+          companyId: String(p.companyId || p.company_id),
+          fileName: p.fileName || p.file_name,
+          fileData: Array.isArray(parsedData) ? parsedData : [],
+          createdAt: p.createdAt || p.created_at
+        };
+      });
       setPlanos(flat);
 
       const grouped: CompanyGroup[] = companies
         .map((c) => ({
-          companyId: c.id,
+          companyId: String(c.id),
           companyName: c.name,
-          planos: flat.filter((p) => p.companyId === c.id),
+          planos: flat.filter((p) => p.companyId === String(c.id)),
         }))
         .filter((g) => g.planos.length > 0);
       setGroups(grouped);
@@ -125,26 +139,50 @@ const PlanosPage = () => {
     }
   }, [groups]);
 
+  // Generar URL temporal para la vista previa del PDF
+  useEffect(() => {
+    if (selectedGroup && selectedGroup.planos.length > carouselIndex) {
+      const currentPlano = selectedGroup.planos[carouselIndex];
+      if (currentPlano.fileData && currentPlano.fileData.length > 0) {
+        const url = byteArrayToUrl(currentPlano.fileData);
+        setPreviewUrl(url);
+        return () => URL.revokeObjectURL(url); // Evitar memory leaks
+      }
+    }
+    setPreviewUrl(null);
+  }, [selectedGroup, carouselIndex]);
+
   const handleCreate = async () => {
     if (!newCompanyId) return;
     const validItems = newItems.filter((it) => it.name.trim());
     if (validItems.length === 0) return;
 
-    for (const item of validItems) {
-      const fileData = item.file ? await fileToByteArray(item.file) : [];
-      await apiCreatePlano({
-        name: item.name.trim(),
-        companyId: newCompanyId,
-        fileName: item.file?.name || "sin_archivo.pdf",
-        fileData,
-      });
-    }
+    setIsSaving(true);
+    try {
+      for (const item of validItems) {
+        const fileData = item.file ? await fileToByteArray(item.file) : [];
+        await apiCreatePlano({
+          name: item.name.trim(),
+          companyId: newCompanyId,
+          fileName: item.file?.name || "sin_archivo.pdf",
+          fileData,
+        });
+      }
 
-    await loadPlanos();
-    setShowNew(false);
-    setNewItems([{ name: "", file: null }]);
-    setNewCompanyId("");
-    toast({ title: "Plano(s) creado(s)" });
+      await loadPlanos();
+      setShowNew(false);
+      setNewItems([{ name: "", file: null }]);
+      setNewCompanyId("");
+      toast({ title: "Plano(s) creado(s)" });
+    } catch (error: any) {
+      toast({
+        title: "Error al crear plano",
+        description: error.message || "El archivo puede ser demasiado grande o hubo un error en el servidor.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleDelete = async () => {
@@ -291,11 +329,21 @@ const PlanosPage = () => {
                 </div>
               </div>
 
-              {/* PDF Preview placeholder */}
-              <div className="border border-border rounded-lg bg-muted/20 flex flex-col items-center justify-center h-[400px] mb-4">
-                <FileText className="h-16 w-16 text-muted-foreground/40 mb-3" />
-                <p className="text-sm text-muted-foreground font-medium">{currentPlano.fileName}</p>
-                <p className="text-xs text-muted-foreground mt-1">Vista previa del PDF</p>
+              {/* PDF Preview */}
+              <div className="border border-border rounded-lg bg-muted/20 flex flex-col items-center justify-center h-[500px] mb-4 overflow-hidden relative">
+                {previewUrl ? (
+                  <iframe
+                    src={previewUrl}
+                    className="w-full h-full border-0 absolute inset-0"
+                    title={currentPlano.fileName}
+                  />
+                ) : (
+                  <>
+                    <FileText className="h-16 w-16 text-muted-foreground/40 mb-3" />
+                    <p className="text-sm text-muted-foreground font-medium">{currentPlano.fileName}</p>
+                    <p className="text-xs text-muted-foreground mt-1">Sin archivo PDF asociado</p>
+                  </>
+                )}
               </div>
 
               <p className="text-xs text-muted-foreground">Creado: {currentPlano.createdAt}</p>
@@ -481,8 +529,9 @@ const PlanosPage = () => {
             <Button variant="outline" onClick={() => setShowNew(false)}>Cancelar</Button>
             <Button
               onClick={handleCreate}
-              disabled={!newCompanyId || !newItems.some((it) => it.name.trim())}
+              disabled={isSaving || !newCompanyId || !newItems.some((it) => it.name.trim())}
             >
+              {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Crear {newItems.filter((it) => it.name.trim()).length > 1 ? `(${newItems.filter((it) => it.name.trim()).length})` : ""}
             </Button>
           </DialogFooter>

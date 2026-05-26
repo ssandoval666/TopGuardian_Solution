@@ -80,6 +80,7 @@ const ChecklistVisitsPage = () => {
   const [newCompanyId, setNewCompanyId] = useState("");
   const [newDate, setNewDate] = useState("");
   const [newEntries, setNewEntries] = useState<ChecklistEntry[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
 
   // Delete confirmation
   const [deletingVisit, setDeletingVisit] = useState<ChecklistVisit | null>(null);
@@ -92,7 +93,13 @@ const ChecklistVisitsPage = () => {
         Promise.all(companies.map((c) => apiFetchChecklistVisits(c.id))).then((r) => r.flat()),
       ]);
       setChecklistItems(items);
-      setVisits(allVisits);
+      // Mapeamos los datos del backend (snake_case) al formato que espera el frontend (camelCase)
+      setVisits(allVisits.map((v: any) => ({
+        ...v,
+        companyId: String(v.companyId || v.company_id),
+        companyName: v.companyName || v.company_name,
+        visitDate: v.visitDate || v.visit_date,
+      })));
     } finally {
       setLoading(false);
     }
@@ -103,10 +110,9 @@ const ChecklistVisitsPage = () => {
   }, [loadData, companies]);
 
   const getApprovalPercent = (visit: ChecklistVisit) => {
-    const evaluated = visit.entries.filter((e) => e.compliant !== null);
-    if (evaluated.length === 0) return 0;
-    const approved = evaluated.filter((e) => e.compliant === true).length;
-    return Math.round((approved / evaluated.length) * 100);
+    if (visit.entries.length === 0) return 0;
+    const approved = visit.entries.filter((e) => e.compliant === true || e.compliant === null).length;
+    return Math.round((approved / visit.entries.length) * 100);
   };
 
   const openNewDialog = () => {
@@ -126,15 +132,26 @@ const ChecklistVisitsPage = () => {
   const handleCreate = async () => {
     if (!newCompanyId || !newDate) return;
     const company = companies.find((c) => c.id === newCompanyId);
-    await apiCreateChecklistVisit({
-      companyId: newCompanyId,
-      companyName: company?.name || "",
-      visitDate: newDate,
-      entries: newEntries,
-    });
-    await loadData();
-    setShowNew(false);
-    toast({ title: "Visita creada" });
+    setIsSaving(true);
+    try {
+      await apiCreateChecklistVisit({
+        companyId: newCompanyId,
+        companyName: company?.name || "",
+        visitDate: newDate,
+        entries: newEntries,
+      });
+      await loadData();
+      setShowNew(false);
+      toast({ title: "Visita creada" });
+    } catch (error: any) {
+      toast({
+        title: "Error al crear",
+        description: error.message || "Ocurrió un error en el servidor.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const openEdit = (visit: ChecklistVisit) => {
@@ -144,18 +161,43 @@ const ChecklistVisitsPage = () => {
 
   const handleSaveEdit = async () => {
     if (!selectedVisit) return;
-    await apiUpdateChecklistVisit(selectedVisit.id, { entries: editEntries });
-    await loadData();
-    setSelectedVisit(null);
-    toast({ title: "Visita actualizada" });
+    setIsSaving(true);
+    try {
+      const updatedVisit = await apiUpdateChecklistVisit(selectedVisit.id, { entries: editEntries });
+      // Mapeamos también la respuesta de actualización para no perder los datos en la vista local
+      const mappedUpdatedVisit = {
+        ...updatedVisit,
+        companyId: String(updatedVisit.companyId || (updatedVisit as any).company_id),
+        companyName: updatedVisit.companyName || (updatedVisit as any).company_name,
+        visitDate: updatedVisit.visitDate || (updatedVisit as any).visit_date,
+      };
+      // Optimización: En lugar de recargar todo, actualizamos solo la visita modificada en el estado local.
+      setVisits(prevVisits => 
+        prevVisits.map(v => v.id === mappedUpdatedVisit.id ? mappedUpdatedVisit : v)
+      );
+      setSelectedVisit(null);
+      toast({ title: "Visita actualizada" });
+    } catch (error: any) {
+      toast({
+        title: "Error al actualizar",
+        description: error.message || "No se pudo actualizar la visita.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleDelete = async () => {
     if (!deletingVisit) return;
-    await apiDeleteChecklistVisit(deletingVisit.id);
-    await loadData();
-    setDeletingVisit(null);
-    toast({ title: "Visita eliminada" });
+    try {
+      await apiDeleteChecklistVisit(deletingVisit.id);
+      await loadData();
+      setDeletingVisit(null);
+      toast({ title: "Visita eliminada" });
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    }
   };
 
   const handleExportPDF = (visit: ChecklistVisit) => {
@@ -174,35 +216,38 @@ const ChecklistVisitsPage = () => {
     doc.text(`Fecha de visita: ${visit.visitDate}`, 14, 42);
 
     // Approval summary
-    const evaluated = visit.entries.filter((e) => e.compliant !== null);
-    const approved = evaluated.filter((e) => e.compliant === true).length;
-    const pct = evaluated.length > 0 ? Math.round((approved / evaluated.length) * 100) : 0;
-    doc.text(`Aprobación: ${approved}/${evaluated.length} ítems (${pct}%)`, 14, 49);
+    const totalEntries = visit.entries.length;
+    const approved = visit.entries.filter((e) => e.compliant === true || e.compliant === null).length;
+    const pct = totalEntries > 0 ? Math.round((approved / totalEntries) * 100) : 0;
+    doc.text(`Aprobación: ${approved}/${totalEntries} ítems (${pct}%)`, 14, 49);
 
     // Table
     const tableData = visit.entries.map((e) => [
       e.itemName,
-      e.compliant === true ? "Sí" : e.compliant === false ? "No" : "N/E",
+      e.compliant === true ? "X" : "",
+      e.compliant === false ? "X" : "",
+      e.compliant === null ? "X" : "",
       e.observations || "-",
     ]);
 
     autoTable(doc, {
       startY: 56,
-      head: [["Tópico", "Cumple", "Observaciones"]],
+      head: [["Tópico", "Cumple", "No Cumple", "No Aplica", "Observaciones"]],
       body: tableData,
       styles: { fontSize: 10, cellPadding: 3 },
-      headStyles: { fillColor: [41, 128, 185], textColor: 255, fontStyle: "bold" },
+      headStyles: { fillColor: [41, 128, 185], textColor: 255, fontStyle: "bold", halign: "center" },
       columnStyles: {
-        0: { cellWidth: 80 },
-        1: { cellWidth: 25, halign: "center" },
-        2: { cellWidth: "auto" },
+        0: { cellWidth: 70, halign: "left" },
+        1: { cellWidth: 20, halign: "center" },
+        2: { cellWidth: 25, halign: "center" },
+        3: { cellWidth: 25, halign: "center" },
+        4: { cellWidth: "auto", halign: "left" },
       },
       didParseCell: (data) => {
-        if (data.section === "body" && data.column.index === 1) {
-          const val = data.cell.text[0];
-          if (val === "Sí") data.cell.styles.textColor = [39, 174, 96];
-          else if (val === "No") data.cell.styles.textColor = [231, 76, 60];
-          else data.cell.styles.textColor = [149, 165, 166];
+        if (data.section === "body") {
+          if (data.column.index === 1 && data.cell.text[0] === "X") data.cell.styles.textColor = [39, 174, 96];
+          if (data.column.index === 2 && data.cell.text[0] === "X") data.cell.styles.textColor = [231, 76, 60];
+          if (data.column.index === 3 && data.cell.text[0] === "X") data.cell.styles.textColor = [149, 165, 166];
         }
       },
     });
@@ -248,19 +293,20 @@ const ChecklistVisitsPage = () => {
                     <TableHead className="min-w-[250px]">Tópico</TableHead>
                     <TableHead className="w-[120px] text-center">Cumple</TableHead>
                     <TableHead className="w-[120px] text-center">No Cumple</TableHead>
+                    <TableHead className="w-[100px] text-center">No Aplica</TableHead>
                     <TableHead className="min-w-[200px]">Observaciones</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {editEntries.map((entry, idx) => (
                     <TableRow key={entry.itemId}>
-                      <TableCell className="font-medium">{entry.itemName}</TableCell>
+                      <TableCell className="font-medium text-sm">{entry.itemName}</TableCell>
                       <TableCell className="text-center">
                         <Checkbox
                           checked={entry.compliant === true}
-                          onCheckedChange={(checked) => {
+                          onCheckedChange={() => {
                             const updated = [...editEntries];
-                            updated[idx] = { ...updated[idx], compliant: checked ? true : null };
+                            updated[idx] = { ...updated[idx], compliant: true };
                             setEditEntries(updated);
                           }}
                         />
@@ -268,9 +314,19 @@ const ChecklistVisitsPage = () => {
                       <TableCell className="text-center">
                         <Checkbox
                           checked={entry.compliant === false}
-                          onCheckedChange={(checked) => {
+                          onCheckedChange={() => {
                             const updated = [...editEntries];
-                            updated[idx] = { ...updated[idx], compliant: checked ? false : null };
+                            updated[idx] = { ...updated[idx], compliant: false };
+                            setEditEntries(updated);
+                          }}
+                        />
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Checkbox
+                          checked={entry.compliant === null}
+                          onCheckedChange={() => {
+                            const updated = [...editEntries];
+                            updated[idx] = { ...updated[idx], compliant: null };
                             setEditEntries(updated);
                           }}
                         />
@@ -297,7 +353,10 @@ const ChecklistVisitsPage = () => {
 
         <div className="flex justify-end gap-2">
           <Button variant="outline" onClick={() => setSelectedVisit(null)}>Cancelar</Button>
-          <Button onClick={handleSaveEdit}>Guardar Cambios</Button>
+          <Button onClick={handleSaveEdit} disabled={isSaving}>
+            {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Guardar Cambios
+          </Button>
         </div>
       </div>
     );
@@ -397,7 +456,7 @@ const ChecklistVisitsPage = () => {
                     </Badge>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    {visit.entries.filter((e) => e.compliant === true).length} / {visit.entries.length} ítems aprobados
+                    {visit.entries.filter((e) => e.compliant === true || e.compliant === null).length} / {visit.entries.length} ítems aprobados
                   </p>
                 </CardContent>
               </Card>
@@ -442,6 +501,7 @@ const ChecklistVisitsPage = () => {
                       <TableHead className="min-w-[250px]">Tópico</TableHead>
                       <TableHead className="w-[100px] text-center">Cumple</TableHead>
                       <TableHead className="w-[100px] text-center">No Cumple</TableHead>
+                      <TableHead className="w-[100px] text-center">No Aplica</TableHead>
                       <TableHead className="min-w-[200px]">Observaciones</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -452,9 +512,9 @@ const ChecklistVisitsPage = () => {
                         <TableCell className="text-center">
                           <Checkbox
                             checked={entry.compliant === true}
-                            onCheckedChange={(checked) => {
+                            onCheckedChange={() => {
                               const updated = [...newEntries];
-                              updated[idx] = { ...updated[idx], compliant: checked ? true : null };
+                              updated[idx] = { ...updated[idx], compliant: true };
                               setNewEntries(updated);
                             }}
                           />
@@ -462,9 +522,19 @@ const ChecklistVisitsPage = () => {
                         <TableCell className="text-center">
                           <Checkbox
                             checked={entry.compliant === false}
-                            onCheckedChange={(checked) => {
+                            onCheckedChange={() => {
                               const updated = [...newEntries];
-                              updated[idx] = { ...updated[idx], compliant: checked ? false : null };
+                              updated[idx] = { ...updated[idx], compliant: false };
+                              setNewEntries(updated);
+                            }}
+                          />
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Checkbox
+                            checked={entry.compliant === null}
+                            onCheckedChange={() => {
+                              const updated = [...newEntries];
+                              updated[idx] = { ...updated[idx], compliant: null };
                               setNewEntries(updated);
                             }}
                           />
@@ -490,7 +560,8 @@ const ChecklistVisitsPage = () => {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowNew(false)}>Cancelar</Button>
-            <Button onClick={handleCreate} disabled={!newCompanyId || !newDate}>
+            <Button onClick={handleCreate} disabled={isSaving || !newCompanyId || !newDate}>
+              {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Crear Visita
             </Button>
           </DialogFooter>

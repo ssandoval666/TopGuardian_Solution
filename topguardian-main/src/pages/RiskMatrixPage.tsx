@@ -134,7 +134,14 @@ const RiskMatrixPage = () => {
       const allResults = await Promise.all(
         companies.map((c) => apiFetchRiskMatrices(c.id))
       );
-      setMatrices(allResults.flat());
+      // Sanitizar la respuesta: Asegurar que los arrays estén inicializados para evitar el error "is not iterable"
+      const flatMatrices = allResults.flat().map(m => ({
+        ...m,
+        sectors: m.sectors || [],
+        hazards: m.hazards || [],
+        cells: m.cells || []
+      }));
+      setMatrices(flatMatrices);
       setSelectedMatrix(null);
     } finally {
       setLoading(false);
@@ -147,22 +154,44 @@ const RiskMatrixPage = () => {
 
   const handleCreateMatrix = async () => {
     if (!newMatrixName.trim() || !newMatrixCompanyId) return;
-    const created = await apiCreateRiskMatrix(newMatrixCompanyId, newMatrixName.trim());
-    setMatrices((prev) => [...prev, created]);
-    setSelectedMatrix(created);
-    setNewMatrixName("");
-    setNewMatrixCompanyId("");
-    setShowNewMatrix(false);
-    toast({ title: "Matriz creada", description: `${created.name} — ${companies.find(c => c.id === newMatrixCompanyId)?.name || ""}` });
+    try {
+      const created = await apiCreateRiskMatrix(newMatrixCompanyId, newMatrixName.trim());
+      
+      // Asegurar que la matriz tenga los arrays inicializados para evitar crasheos en la UI
+      const newMatrix: RiskMatrix = {
+        ...created,
+        sectors: created.sectors || [],
+        hazards: created.hazards || [],
+        cells: created.cells || []
+      };
+
+      setMatrices((prev) => [...prev, newMatrix]);
+      setSelectedMatrix(newMatrix);
+      setNewMatrixName("");
+      setNewMatrixCompanyId("");
+      setShowNewMatrix(false);
+      toast({ title: "Matriz creada", description: `${newMatrix.name} — ${companies.find(c => c.id === newMatrixCompanyId)?.name || ""}` });
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "No se pudo crear la matriz", variant: "destructive" });
+    }
   };
 
   const handleConfirmDeleteMatrix = async () => {
     if (!deletingMatrix) return;
-    await apiDeleteRiskMatrix(deletingMatrix.companyId, deletingMatrix.id);
-    setMatrices((prev) => prev.filter((m) => m.id !== deletingMatrix.id));
-    if (selectedMatrix?.id === deletingMatrix.id) setSelectedMatrix(null);
-    setDeletingMatrix(null);
-    toast({ title: "Matriz eliminada" });
+    try {
+      await apiDeleteRiskMatrix(deletingMatrix.companyId, deletingMatrix.id);
+      setMatrices((prev) => prev.filter((m) => m.id !== deletingMatrix.id));
+      if (selectedMatrix?.id === deletingMatrix.id) setSelectedMatrix(null);
+      toast({ title: "Matriz eliminada" });
+    } catch (error: any) {
+      toast({
+        title: "Error al eliminar",
+        description: error.message || "No se pudo eliminar la matriz de riesgo.",
+        variant: "destructive"
+      });
+    } finally {
+      setDeletingMatrix(null);
+    }
   };
 
   const handleRenameMatrix = () => {
@@ -188,36 +217,40 @@ const RiskMatrixPage = () => {
 
   const handleDuplicate = async () => {
     if (!duplicateSource || !duplicateName.trim() || !duplicateCompanyId) return;
-    const created = await apiCreateRiskMatrix(duplicateCompanyId, duplicateName.trim());
-    // Copy sectors, hazards and cells with new IDs
-    const sectorMap: Record<string, string> = {};
-    const newSectors = duplicateSource.sectors.map((s) => {
-      const newId = "s" + Date.now() + Math.random().toString(36).slice(2, 6);
-      sectorMap[s.id] = newId;
-      return { ...s, id: newId };
-    });
-    const hazardMap: Record<string, string> = {};
-    const newHazards = duplicateSource.hazards.map((h) => {
-      const newId = "h" + Date.now() + Math.random().toString(36).slice(2, 6);
-      hazardMap[h.id] = newId;
-      return { ...h, id: newId };
-    });
-    const newCells = duplicateSource.cells.map((c) => ({
-      ...c,
-      sectorId: sectorMap[c.sectorId] || c.sectorId,
-      hazardId: hazardMap[c.hazardId] || c.hazardId,
-    }));
-    const duplicated: RiskMatrix = {
-      ...created,
-      sectors: newSectors,
-      hazards: newHazards,
-      cells: newCells,
-    };
-    await apiSaveRiskMatrix(duplicated);
-    setMatrices((prev) => [...prev, duplicated]);
-    setShowDuplicate(false);
-    setDuplicateSource(null);
-    toast({ title: "Matriz duplicada", description: duplicated.name });
+    try {
+      const created = await apiCreateRiskMatrix(duplicateCompanyId, duplicateName.trim());
+      // Copy sectors, hazards and cells with new IDs
+      const sectorMap: Record<string, string> = {};
+      const newSectors = (duplicateSource.sectors || []).map((s) => {
+        const newId = "s" + Date.now() + Math.random().toString(36).slice(2, 6);
+        sectorMap[s.id] = newId;
+        return { ...s, id: newId };
+      });
+      const hazardMap: Record<string, string> = {};
+      const newHazards = (duplicateSource.hazards || []).map((h) => {
+        const newId = "h" + Date.now() + Math.random().toString(36).slice(2, 6);
+        hazardMap[h.id] = newId;
+        return { ...h, id: newId };
+      });
+      const newCells = (duplicateSource.cells || []).map((c) => ({
+        ...c,
+        sectorId: sectorMap[c.sectorId] || c.sectorId,
+        hazardId: hazardMap[c.hazardId] || c.hazardId,
+      }));
+      const duplicated: RiskMatrix = {
+        ...created,
+        sectors: newSectors,
+        hazards: newHazards,
+        cells: newCells,
+      };
+      await apiSaveRiskMatrix(duplicated);
+      setMatrices((prev) => [...prev, duplicated]);
+      setShowDuplicate(false);
+      setDuplicateSource(null);
+      toast({ title: "Matriz duplicada", description: duplicated.name });
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "No se pudo duplicar la matriz", variant: "destructive" });
+    }
   };
 
   const openDuplicateDialog = (matrix: RiskMatrix) => {
@@ -232,7 +265,7 @@ const RiskMatrixPage = () => {
     const newSector: Sector = { id: "s" + Date.now(), name: newSectorName.trim() };
     setSelectedMatrix({
       ...selectedMatrix,
-      sectors: [...selectedMatrix.sectors, newSector],
+      sectors: [...(selectedMatrix.sectors || []), newSector],
     });
     setNewSectorName("");
     setShowAddSector(false);
@@ -242,8 +275,8 @@ const RiskMatrixPage = () => {
     if (!selectedMatrix) return;
     setSelectedMatrix({
       ...selectedMatrix,
-      sectors: selectedMatrix.sectors.filter((s) => s.id !== sectorId),
-      cells: selectedMatrix.cells.filter((c) => c.sectorId !== sectorId),
+      sectors: (selectedMatrix.sectors || []).filter((s) => s.id !== sectorId),
+      cells: (selectedMatrix.cells || []).filter((c) => c.sectorId !== sectorId),
     });
   };
 
@@ -258,7 +291,7 @@ const RiskMatrixPage = () => {
     }));
     setSelectedMatrix({
       ...selectedMatrix,
-      hazards: [...selectedMatrix.hazards, ...newHazards],
+      hazards: [...(selectedMatrix.hazards || []), ...newHazards],
     });
     setNewHazardNames([""]);
     setShowAddHazard(false);
@@ -268,14 +301,14 @@ const RiskMatrixPage = () => {
     if (!selectedMatrix) return;
     setSelectedMatrix({
       ...selectedMatrix,
-      hazards: selectedMatrix.hazards.filter((h) => h.id !== hazardId),
-      cells: selectedMatrix.cells.filter((c) => c.hazardId !== hazardId),
+      hazards: (selectedMatrix.hazards || []).filter((h) => h.id !== hazardId),
+      cells: (selectedMatrix.cells || []).filter((c) => c.hazardId !== hazardId),
     });
   };
 
   const handleCellClick = (sectorId: string, hazardId: string) => {
     if (!selectedMatrix) return;
-    const existing = selectedMatrix.cells.find(
+    const existing = (selectedMatrix.cells || []).find(
       (c) => c.sectorId === sectorId && c.hazardId === hazardId
     );
     setEditingCell({
@@ -301,7 +334,7 @@ const RiskMatrixPage = () => {
       riskLevel: level,
       controlMeasure: editingCell.controlMeasure,
     };
-    const otherCells = selectedMatrix.cells.filter(
+    const otherCells = (selectedMatrix.cells || []).filter(
       (c) => !(c.sectorId === editingCell.sectorId && c.hazardId === editingCell.hazardId)
     );
     setSelectedMatrix({ ...selectedMatrix, cells: [...otherCells, newCell] });
@@ -314,22 +347,27 @@ const RiskMatrixPage = () => {
     setSaving(true);
     try {
       await apiSaveRiskMatrix(selectedMatrix);
+      
+      // Sincronizar los cambios con la lista principal para que al volver atrás no se pierdan
+      setMatrices((prev) => prev.map((m) => (m.id === selectedMatrix.id ? selectedMatrix : m)));
       toast({ title: "Matriz guardada exitosamente" });
+    } catch (error: any) {
+      toast({ title: "Error al guardar", description: error.message || "No se pudo guardar la matriz", variant: "destructive" });
     } finally {
       setSaving(false);
     }
   };
 
   const getCell = (sectorId: string, hazardId: string): RiskCell | undefined =>
-    selectedMatrix?.cells.find((c) => c.sectorId === sectorId && c.hazardId === hazardId);
+    (selectedMatrix?.cells || []).find((c) => c.sectorId === sectorId && c.hazardId === hazardId);
 
   // Group hazards by category
   const groupedHazards = selectedMatrix
     ? hazardCategories.filter((cat) =>
-        selectedMatrix.hazards.some((h) => h.category === cat)
+        (selectedMatrix.hazards || []).some((h) => h.category === cat)
       ).map((cat) => ({
         category: cat,
-        hazards: selectedMatrix.hazards.filter((h) => h.category === cat),
+        hazards: (selectedMatrix.hazards || []).filter((h) => h.category === cat),
       }))
     : [];
 
@@ -394,10 +432,10 @@ const RiskMatrixPage = () => {
 
     // Build table
     const grouped = hazardCategories.filter((cat) =>
-      matrix.hazards.some((h) => h.category === cat)
+      (matrix.hazards || []).some((h) => h.category === cat)
     ).map((cat) => ({
       category: cat,
-      hazards: matrix.hazards.filter((h) => h.category === cat),
+      hazards: (matrix.hazards || []).filter((h) => h.category === cat),
     }));
     const flatHazards = grouped.flatMap((g) => g.hazards);
 
@@ -419,10 +457,10 @@ const RiskMatrixPage = () => {
     }));
 
     // Body
-    const body = matrix.sectors.map((sector) => {
+    const body = (matrix.sectors || []).map((sector) => {
       const row: any[] = [{ content: sector.name, styles: { fontStyle: "bold" as const } }];
       flatHazards.forEach((hazard) => {
-        const cell = matrix.cells.find(
+        const cell = (matrix.cells || []).find(
           (c) => c.sectorId === sector.id && c.hazardId === hazard.id
         );
         if (cell) {
@@ -754,10 +792,19 @@ const RiskMatrixPage = () => {
       </div>
 
       {/* Matrix Table */}
-      {selectedMatrix.sectors.length === 0 || selectedMatrix.hazards.length === 0 ? (
+      {(selectedMatrix.sectors || []).length === 0 || (selectedMatrix.hazards || []).length === 0 ? (
         <Card>
-          <CardContent className="py-12 text-center text-muted-foreground">
-            <p>Agregue al menos un sector y un peligro para armar la matriz.</p>
+          <CardContent className="py-12 flex flex-col items-center justify-center text-center text-muted-foreground">
+            <AlertTriangle className="h-12 w-12 mb-4 opacity-50" />
+            <p className="mb-4">Para visualizar la tabla de evaluación, debe agregar al menos un sector y un peligro.</p>
+            <div className="flex gap-4 mt-2">
+              <Badge variant={(selectedMatrix.sectors || []).length > 0 ? "default" : "secondary"} className="text-sm py-1 px-3">
+                Sectores listos: {(selectedMatrix.sectors || []).length}
+              </Badge>
+              <Badge variant={(selectedMatrix.hazards || []).length > 0 ? "default" : "secondary"} className="text-sm py-1 px-3">
+                Peligros listos: {(selectedMatrix.hazards || []).length}
+              </Badge>
+            </div>
           </CardContent>
         </Card>
       ) : (

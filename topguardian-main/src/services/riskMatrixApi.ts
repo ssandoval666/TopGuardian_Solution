@@ -29,7 +29,12 @@ const apiCall = async (endpoint: string, options: RequestInit = {}): Promise<any
     throw new Error(errorData.error || `HTTP ${response.status}`);
   }
 
-  return response.json();
+  if (response.status === 204) {
+    return;
+  }
+
+  const text = await response.text();
+  return text ? JSON.parse(text) : undefined;
 };
 
 // Niveles de riesgo: Probabilidad (1-5) x Severidad (1-5)
@@ -104,9 +109,17 @@ export const apiSaveRiskMatrix = async (matrix: RiskMatrix): Promise<RiskMatrix>
 };
 
 export const apiCreateRiskMatrix = async (companyId: string, name: string): Promise<RiskMatrix> => {
+  const date = new Date().toISOString().split('T')[0];
   return apiCall('/risk-matrices', {
     method: 'POST',
-    body: JSON.stringify({ companyId, name }),
+    body: JSON.stringify({ 
+      companyId, 
+      name, 
+      date,
+      sectors: [],
+      hazards: [],
+      cells: []
+    }),
   });
 };
 
