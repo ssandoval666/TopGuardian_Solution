@@ -3,6 +3,14 @@ const router = express.Router();
 const db = require('../database');
 const { authenticateToken } = require('../middleware/auth');
 
+// Helper para convertir el JSON array a Buffer de SQLite
+function getBuffer(data) {
+  if (!data) return null;
+  if (Array.isArray(data)) return Buffer.from(data);
+  if (data.type === 'Buffer' && Array.isArray(data.data)) return Buffer.from(data.data);
+  return null;
+}
+
 /**
  * @swagger
  * /trainings:
@@ -126,10 +134,10 @@ router.get('/all', authenticateToken, async (req, res) => {
  */
 router.post('/', authenticateToken, async (req, res) => {
   try {
-    const { title, description, instructor, date, duration, recurrence } = req.body;
+    const { title, description, instructor, date, duration, recurrence, pdfFileName, pdfData, thumbnailFileName, thumbnailData } = req.body;
     const result = await db.runAsync(
-      'INSERT INTO trainings (title, description, instructor, date, duration, recurrence) VALUES (?, ?, ?, ?, ?, ?)',
-      [title, description, instructor, date, duration, recurrence || 'none']
+      'INSERT INTO trainings (title, description, instructor, date, duration, recurrence, pdf_file_name, pdf_data, thumbnail_file_name, thumbnail_data) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [title, description, instructor, date, duration, recurrence || 'none', pdfFileName || null, getBuffer(pdfData), thumbnailFileName || null, getBuffer(thumbnailData)]
     );
     const training = await db.getAsync('SELECT * FROM trainings WHERE id = ?', [result.lastID]);
     res.status(201).json(training);
@@ -179,11 +187,11 @@ router.post('/', authenticateToken, async (req, res) => {
 router.put('/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, description, instructor, date, duration, recurrence } = req.body;
+    const { title, description, instructor, date, duration, recurrence, pdfFileName, pdfData, thumbnailFileName, thumbnailData } = req.body;
 
     await db.runAsync(
-      'UPDATE trainings SET title = ?, description = ?, instructor = ?, date = ?, duration = ?, recurrence = ? WHERE id = ?',
-      [title, description, instructor, date, duration, recurrence, id]
+      'UPDATE trainings SET title = ?, description = ?, instructor = ?, date = ?, duration = ?, recurrence = ?, pdf_file_name = ?, pdf_data = ?, thumbnail_file_name = ?, thumbnail_data = ? WHERE id = ?',
+      [title, description, instructor, date, duration, recurrence, pdfFileName || null, getBuffer(pdfData), thumbnailFileName || null, getBuffer(thumbnailData), id]
     );
 
     const training = await db.getAsync('SELECT * FROM trainings WHERE id = ?', [id]);
@@ -404,6 +412,34 @@ router.put('/company/:id/complete', authenticateToken, async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /trainings/company/{id}:
+ *   delete:
+ *     summary: Unassign training from company
+ *     tags: [Company Trainings]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       204:
+ *         description: Training unassigned
+ */
+router.delete('/company/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    await db.runAsync('DELETE FROM company_trainings WHERE id = ?', [id]);
+    res.status(204).send();
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ---- Employee Trainings ----
 
 /**
@@ -576,6 +612,34 @@ router.put('/employee/:id/complete', authenticateToken, async (req, res) => {
     `, [id]);
 
     res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * @swagger
+ * /trainings/employee/{id}:
+ *   delete:
+ *     summary: Unassign training from employee
+ *     tags: [Employee Trainings]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       204:
+ *         description: Training unassigned
+ */
+router.delete('/employee/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    await db.runAsync('DELETE FROM employee_trainings WHERE id = ?', [id]);
+    res.status(204).send();
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

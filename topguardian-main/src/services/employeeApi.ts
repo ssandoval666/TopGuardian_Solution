@@ -57,6 +57,20 @@ export interface EmployeeListResponse {
   pageSize: number;
 }
 
+// Helper para mapear la respuesta del backend (snake_case) al frontend (camelCase)
+const mapEmployee = (e: any): Employee => ({
+  ...e,
+  id: String(e.id),
+  companyId: String(e.companyId || e.company_id),
+  firstName: e.firstName || e.first_name || "",
+  lastName: e.lastName || e.last_name || "",
+  documentNumber: e.documentNumber || e.document_number || "",
+  position: e.position || "",
+  department: e.department || "",
+  email: e.email || "",
+  phone: e.phone || "",
+});
+
 export const apiFetchEmployees = async (params: EmployeeListParams): Promise<EmployeeListResponse> => {
   const queryParams = new URLSearchParams({
     companyId: params.companyId,
@@ -66,21 +80,45 @@ export const apiFetchEmployees = async (params: EmployeeListParams): Promise<Emp
   if (params.search) {
     queryParams.append('search', params.search);
   }
-  return apiCall(`/employees?${queryParams}`);
+  
+  const res = await apiCall(`/employees?${queryParams}`);
+  if (res && Array.isArray(res.data)) {
+    res.data = res.data.map(mapEmployee);
+  }
+  return res;
 };
 
 export const apiCreateEmployee = async (employee: Omit<Employee, "id">): Promise<Employee> => {
-  return apiCall('/employees', {
+  // Enviamos ambos formatos para asegurar compatibilidad con el backend
+  const payload = {
+    ...employee,
+    company_id: employee.companyId,
+    first_name: employee.firstName,
+    last_name: employee.lastName,
+    document_number: employee.documentNumber
+  };
+
+  const res = await apiCall('/employees', {
     method: 'POST',
-    body: JSON.stringify(employee),
+    body: JSON.stringify(payload),
   });
+  return mapEmployee(res);
 };
 
 export const apiUpdateEmployee = async (id: string, employee: Partial<Employee>): Promise<Employee> => {
-  return apiCall(`/employees/${id}`, {
+  const payload = {
+    ...employee,
+    ...(employee.companyId && { company_id: employee.companyId }),
+    ...(employee.firstName && { first_name: employee.firstName }),
+    ...(employee.lastName && { last_name: employee.lastName }),
+    ...(employee.documentNumber && { document_number: employee.documentNumber })
+  };
+
+  const res = await apiCall(`/employees/${id}`, {
     method: 'PUT',
-    body: JSON.stringify(employee),
+    body: JSON.stringify(payload),
   });
+  return mapEmployee(res);
 };
 
 export const apiDeleteEmployee = async (id: string): Promise<void> => {

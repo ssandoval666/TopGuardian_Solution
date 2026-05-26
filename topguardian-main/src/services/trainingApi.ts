@@ -61,6 +61,25 @@ export interface TrainingListResponse {
   pageSize: number;
 }
 
+// Helper para mapear la respuesta del backend (snake_case y Buffer) a React
+const mapTraining = (t: any): Training => {
+  const parseBuffer = (rawData: any) => {
+    if (!rawData) return undefined;
+    if (Array.isArray(rawData)) return rawData;
+    if (rawData.data && Array.isArray(rawData.data)) return rawData.data;
+    return undefined;
+  };
+
+  return {
+    ...t,
+    id: String(t.id),
+    pdfFileName: t.pdfFileName || t.pdf_file_name,
+    pdfData: parseBuffer(t.pdfData || t.pdf_data),
+    thumbnailFileName: t.thumbnailFileName || t.thumbnail_file_name,
+    thumbnailData: parseBuffer(t.thumbnailData || t.thumbnail_data),
+  };
+};
+
 export const apiFetchTrainingList = async (params: TrainingListParams): Promise<TrainingListResponse> => {
   const queryParams = new URLSearchParams({
     page: params.page.toString(),
@@ -69,21 +88,27 @@ export const apiFetchTrainingList = async (params: TrainingListParams): Promise<
   if (params.search) {
     queryParams.append('search', params.search);
   }
-  return apiCall(`/trainings?${queryParams}`);
+  const res = await apiCall(`/trainings?${queryParams}`);
+  if (res && Array.isArray(res.data)) {
+    res.data = res.data.map(mapTraining);
+  }
+  return res;
 };
 
 export const apiCreateTraining = async (training: Omit<Training, "id">): Promise<Training> => {
-  return apiCall('/trainings', {
+  const res = await apiCall('/trainings', {
     method: 'POST',
     body: JSON.stringify(training),
   });
+  return mapTraining(res);
 };
 
 export const apiUpdateTraining = async (id: string, training: Partial<Training>): Promise<Training> => {
-  return apiCall(`/trainings/${id}`, {
+  const res = await apiCall(`/trainings/${id}`, {
     method: 'PUT',
     body: JSON.stringify(training),
   });
+  return mapTraining(res);
 };
 
 export const apiDeleteTraining = async (id: string): Promise<void> => {
@@ -94,5 +119,9 @@ export const apiDeleteTraining = async (id: string): Promise<void> => {
 
 /** Fetch all trainings (no pagination) for assignment purposes */
 export const apiFetchAllTrainings = async (): Promise<Training[]> => {
-  return apiCall('/trainings/all');
+  const res = await apiCall('/trainings/all');
+  if (Array.isArray(res)) {
+    return res.map(mapTraining);
+  }
+  return res;
 };

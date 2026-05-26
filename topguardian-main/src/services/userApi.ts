@@ -53,6 +53,18 @@ export interface UserListResponse {
   pageSize: number;
 }
 
+// Helper para estandarizar los datos y evitar errores de SQLite (Number vs String)
+const mapUser = (u: any): UserDetail => ({
+  ...u,
+  id: String(u.id),
+  name: u.name,
+  username: u.username,
+  email: u.email,
+  role: u.role || "",
+  phone: u.phone || "",
+  active: u.active === 1 || u.active === true || u.active === "true" || u.active === "1",
+});
+
 export const apiFetchUserList = async (params: UserListParams): Promise<UserListResponse> => {
   const queryParams = new URLSearchParams({
     page: params.page.toString(),
@@ -61,21 +73,27 @@ export const apiFetchUserList = async (params: UserListParams): Promise<UserList
   if (params.search) {
     queryParams.append('search', params.search);
   }
-  return apiCall(`/users/list?${queryParams}`);
+  const res = await apiCall(`/users/list?${queryParams}`);
+  if (res && Array.isArray(res.data)) {
+    res.data = res.data.map(mapUser);
+  }
+  return res;
 };
 
 export const apiCreateUser = async (user: Omit<UserDetail, "id"> & { password: string }): Promise<UserDetail> => {
-  return apiCall('/users', {
+  const res = await apiCall('/users', {
     method: 'POST',
     body: JSON.stringify(user),
   });
+  return mapUser(res);
 };
 
 export const apiUpdateUser = async (id: string, user: Partial<UserDetail>): Promise<UserDetail> => {
-  return apiCall(`/users/${id}`, {
+  const res = await apiCall(`/users/${id}`, {
     method: 'PUT',
     body: JSON.stringify(user),
   });
+  return mapUser(res);
 };
 
 export const apiDeleteUser = async (id: string): Promise<void> => {

@@ -31,6 +31,7 @@ import {
 import {
   Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious,
 } from "@/components/ui/pagination";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Search, Plus, Pencil, Trash2, Loader2, Building2, Users, ClipboardList, GraduationCap } from "lucide-react";
 import { toast } from "sonner";
 
@@ -69,6 +70,7 @@ const CompaniesPage = () => {
   const [isLoadingUsers, setIsLoadingUsers] = useState(false);
   const [isSavingUsers, setIsSavingUsers] = useState(false);
   const [userSearch, setUserSearch] = useState("");
+  const [usersTab, setUsersTab] = useState("assigned");
 
   // Employee roster state
   const [employeeDialogOpen, setEmployeeDialogOpen] = useState(false);
@@ -156,6 +158,7 @@ const CompaniesPage = () => {
     setUsersDialogOpen(true);
     setIsLoadingUsers(true);
     setUserSearch("");
+    setUsersTab("assigned");
     try {
       const [activeUsers, assignedIds] = await Promise.all([
         apiFetchAllActiveUsers(),
@@ -170,10 +173,15 @@ const CompaniesPage = () => {
     }
   };
 
-  const toggleUser = (userId: string) => {
-    setAssignedUserIds((prev) =>
-      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
-    );
+  const handleAssignUser = (userId: string) => {
+    setAssignedUserIds((prev) => {
+      const idStr = String(userId);
+      return prev.includes(idStr) ? prev : [...prev, idStr];
+    });
+  };
+
+  const handleUnassignUser = (userId: string) => {
+    setAssignedUserIds((prev) => prev.filter((id) => id !== String(userId)));
   };
 
   const handleSaveUsers = async () => {
@@ -183,20 +191,29 @@ const CompaniesPage = () => {
       await apiUpdateCompanyUsers(usersCompany.id, assignedUserIds);
       toast.success("Usuarios asignados correctamente");
       setUsersDialogOpen(false);
-    } catch {
-      toast.error("Error al asignar usuarios");
+    } catch (error: any) {
+      toast.error(error.message || "Error al asignar usuarios");
     } finally {
       setIsSavingUsers(false);
     }
   };
 
-  const filteredActiveUsers = userSearch
-    ? allActiveUsers.filter(
-        (u) =>
-          u.name.toLowerCase().includes(userSearch.toLowerCase()) ||
-          u.username.toLowerCase().includes(userSearch.toLowerCase())
+  const assignedUsers = allActiveUsers.filter((u) => assignedUserIds.includes(String(u.id)));
+  const unassignedUsers = allActiveUsers.filter((u) => !assignedUserIds.includes(String(u.id)));
+
+  const filteredAssignedUsers = userSearch
+    ? assignedUsers.filter((u) =>
+        u.name.toLowerCase().includes(userSearch.toLowerCase()) ||
+        u.username.toLowerCase().includes(userSearch.toLowerCase())
       )
-    : allActiveUsers;
+    : assignedUsers;
+
+  const filteredUnassignedUsers = userSearch
+    ? unassignedUsers.filter((u) =>
+        u.name.toLowerCase().includes(userSearch.toLowerCase()) ||
+        u.username.toLowerCase().includes(userSearch.toLowerCase())
+      )
+    : unassignedUsers;
 
   return (
     <div className="space-y-6">
@@ -384,31 +401,58 @@ const CompaniesPage = () => {
                   className="pl-10"
                 />
               </div>
-              <div className="max-h-64 overflow-y-auto border border-border rounded-md divide-y divide-border">
-                {filteredActiveUsers.length === 0 ? (
-                  <p className="text-center text-muted-foreground py-6 text-sm">No se encontraron usuarios activos</p>
-                ) : (
-                  filteredActiveUsers.map((user) => (
-                    <label
-                      key={user.id}
-                      className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-muted/50 transition-colors"
-                    >
-                      <Checkbox
-                        checked={assignedUserIds.includes(user.id)}
-                        onCheckedChange={() => toggleUser(user.id)}
-                      />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-foreground truncate">{user.name}</p>
-                        <p className="text-xs text-muted-foreground truncate">{user.username} · {user.email}</p>
-                      </div>
-                      <span className="text-xs text-muted-foreground">{user.role}</span>
-                    </label>
-                  ))
-                )}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {assignedUserIds.length} usuario{assignedUserIds.length !== 1 ? "s" : ""} seleccionado{assignedUserIds.length !== 1 ? "s" : ""}
-              </p>
+              <Tabs value={usersTab} onValueChange={setUsersTab} className="mt-2">
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="assigned">Habilitados ({assignedUsers.length})</TabsTrigger>
+                  <TabsTrigger value="available">Disponibles ({unassignedUsers.length})</TabsTrigger>
+                </TabsList>
+                
+                <TabsContent value="assigned" className="mt-2">
+                  <div className="max-h-64 overflow-y-auto border border-border rounded-md divide-y divide-border">
+                    {filteredAssignedUsers.length === 0 ? (
+                      <p className="text-center text-muted-foreground py-6 text-sm">No hay usuarios habilitados.</p>
+                    ) : (
+                      filteredAssignedUsers.map((user) => (
+                        <div key={user.id} className="flex items-center justify-between px-4 py-3 hover:bg-muted/50 transition-colors">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-foreground truncate">{user.name}</p>
+                            <p className="text-xs text-muted-foreground truncate">{user.username} · {user.email}</p>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="text-xs text-muted-foreground hidden sm:block">{user.role}</span>
+                            <Button variant="outline" size="sm" className="text-destructive hover:text-destructive" onClick={() => handleUnassignUser(user.id)}>
+                              Desasignar
+                            </Button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="available" className="mt-2">
+                  <div className="max-h-64 overflow-y-auto border border-border rounded-md divide-y divide-border">
+                    {filteredUnassignedUsers.length === 0 ? (
+                      <p className="text-center text-muted-foreground py-6 text-sm">No hay más usuarios disponibles.</p>
+                    ) : (
+                      filteredUnassignedUsers.map((user) => (
+                        <div key={user.id} className="flex items-center justify-between px-4 py-3 hover:bg-muted/50 transition-colors">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-foreground truncate">{user.name}</p>
+                            <p className="text-xs text-muted-foreground truncate">{user.username} · {user.email}</p>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="text-xs text-muted-foreground hidden sm:block">{user.role}</span>
+                            <Button variant="outline" size="sm" onClick={() => handleAssignUser(user.id)}>
+                              Asignar
+                            </Button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </TabsContent>
+              </Tabs>
             </>
           )}
           <DialogFooter>

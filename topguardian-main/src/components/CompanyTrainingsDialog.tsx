@@ -65,10 +65,10 @@ const CompanyTrainingsDialog = ({ open, onOpenChange, companyId, companyName }: 
     }
   }, [open, companyId]);
 
-  const assignedTrainingIds = assigned.map((a) => a.trainingId);
+  const assignedTrainingIds = assigned.map((a) => String(a.trainingId));
 
   const unassignedTrainings = allTrainings.filter(
-    (t) => !assignedTrainingIds.includes(t.id)
+    (t) => !assignedTrainingIds.includes(String(t.id))
   );
 
   const filteredUnassigned = search
@@ -92,8 +92,8 @@ const CompanyTrainingsDialog = ({ open, onOpenChange, companyId, companyName }: 
       });
       toast.success(`"${training.title}" asignada`);
       await loadData();
-    } catch {
-      toast.error("Error al asignar");
+    } catch (error: any) {
+      toast.error(error.message || "Error al asignar");
     } finally {
       setIsSaving(false);
     }
@@ -105,8 +105,8 @@ const CompanyTrainingsDialog = ({ open, onOpenChange, companyId, companyName }: 
       await apiUnassignCompanyTraining(id);
       toast.success("Capacitación desasignada");
       await loadData();
-    } catch {
-      toast.error("Error al desasignar");
+    } catch (error: any) {
+      toast.error(error.message || "Error al desasignar");
     } finally {
       setIsSaving(false);
     }
@@ -118,8 +118,8 @@ const CompanyTrainingsDialog = ({ open, onOpenChange, companyId, companyName }: 
       await apiMarkCompanyTrainingCompleted(id, format(new Date(), "yyyy-MM-dd"));
       toast.success("Marcada como cumplida");
       await loadData();
-    } catch {
-      toast.error("Error al marcar");
+    } catch (error: any) {
+      toast.error(error.message || "Error al marcar");
     } finally {
       setIsSaving(false);
     }

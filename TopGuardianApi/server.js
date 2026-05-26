@@ -60,6 +60,13 @@ const initDatabase = () => {
         email TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )`,
+      `CREATE TABLE IF NOT EXISTS company_users (
+        company_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        PRIMARY KEY (company_id, user_id),
+        FOREIGN KEY (company_id) REFERENCES companies (id),
+        FOREIGN KEY (user_id) REFERENCES users (id)
+      )`,
       `CREATE TABLE IF NOT EXISTS employees (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         company_id INTEGER NOT NULL,
@@ -259,7 +266,7 @@ const insertMockData = async () => {
   try {
     // Clear existing data to avoid duplicates
     const clearTables = async () => {
-      const tablesToClear = ['users', 'companies', 'employees', 'trainings', 'company_trainings', 'employee_trainings', 'planos', 'checklist_items', 'checklist_visits', 'checklist_entries', 'risk_matrices', 'risk_matrix_sectors', 'risk_matrix_hazards', 'risk_matrix_cells', 'chat_messages', 'menus', 'roles'];
+      const tablesToClear = ['users', 'companies', 'company_users', 'employees', 'trainings', 'company_trainings', 'employee_trainings', 'planos', 'checklist_items', 'checklist_visits', 'checklist_entries', 'risk_matrices', 'risk_matrix_sectors', 'risk_matrix_hazards', 'risk_matrix_cells', 'chat_messages', 'menus', 'roles'];
       for (const table of tablesToClear) {
         await new Promise((resolve, reject) => {
           db.run(`DELETE FROM ${table}`, (err) => {

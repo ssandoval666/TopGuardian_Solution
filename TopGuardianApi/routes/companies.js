@@ -220,4 +220,86 @@ router.delete('/:id', authenticateToken, async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /companies/{id}/users:
+ *   get:
+ *     summary: Get users assigned to a company
+ *     tags: [Companies]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: List of user IDs
+ */
+router.get('/:id/users', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const rows = await db.allAsync('SELECT user_id FROM company_users WHERE company_id = ?', [id]);
+    // El frontend espera un array de strings con los IDs
+    res.json(rows.map(r => String(r.user_id)));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * @swagger
+ * /companies/{id}/users:
+ *   put:
+ *     summary: Update users assigned to a company
+ *     tags: [Companies]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               userIds:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *     responses:
+ *       200:
+ *         description: Users updated
+ */
+router.put('/:id/users', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userIds } = req.body;
+
+    // Eliminar las asignaciones anteriores para esta empresa
+    await db.runAsync('DELETE FROM company_users WHERE company_id = ?', [id]);
+
+    // Insertar las nuevas asignaciones
+    if (userIds && Array.isArray(userIds)) {
+      for (const userId of userIds) {
+        if (userId) {
+          await db.runAsync('INSERT OR IGNORE INTO company_users (company_id, user_id) VALUES (?, ?)', [id, userId]);
+        }
+      }
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Error en PUT /companies/:id/users:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

@@ -30,7 +30,17 @@ const apiCall = async (endpoint: string, options: RequestInit = {}): Promise<any
     throw new Error(errorData.error || `HTTP ${response.status}`);
   }
 
-  return response.json();
+  if (response.status === 204) {
+    return;
+  }
+
+  const text = await response.text();
+  if (!text) return undefined;
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    return text;
+  }
 };
 
 export type AssignmentStatus = "pending" | "completed" | "expired" | "expiring_soon";
@@ -65,27 +75,54 @@ export const computeNextDue = (completedDate: string, recurrence: "none" | "mont
   return format(next, "yyyy-MM-dd");
 };
 
+// Helper para mapear la respuesta del backend (snake_case) al frontend (camelCase)
+const mapEmployeeTraining = (t: any): EmployeeTraining => ({
+  ...t,
+  id: String(t.id),
+  employeeId: String(t.employeeId || t.employee_id),
+  trainingId: String(t.trainingId || t.training_id),
+  trainingTitle: t.trainingTitle || t.training_title || t.title || "",
+  assignedDate: t.assignedDate || t.assigned_date || "",
+  completedDate: t.completedDate || t.completed_date,
+  dueDate: t.dueDate || t.due_date,
+  recurrence: t.recurrence || "none",
+});
+
 export const apiFetchEmployeeTrainings = async (employeeId: string): Promise<EmployeeTraining[]> => {
-  return apiCall(`/trainings/employee/${employeeId}`);
+  const res = await apiCall(`/trainings/employee/${employeeId}`);
+  if (Array.isArray(res)) {
+    return res.map(mapEmployeeTraining);
+  }
+  return res;
 };
 
 export const apiAssignTraining = async (
   assignment: Omit<EmployeeTraining, "id" | "status">
 ): Promise<EmployeeTraining> => {
-  return apiCall('/trainings/employee', {
+  const payload = {
+    ...assignment,
+    employee_id: assignment.employeeId,
+    training_id: assignment.trainingId,
+    assigned_date: assignment.assignedDate,
+    due_date: assignment.dueDate,
+    completed_date: assignment.completedDate
+  };
+  const res = await apiCall('/trainings/employee', {
     method: 'POST',
-    body: JSON.stringify(assignment),
+    body: JSON.stringify(payload),
   });
+  return mapEmployeeTraining(res);
 };
 
 export const apiMarkTrainingCompleted = async (
   id: string,
   completedDate: string
 ): Promise<EmployeeTraining> => {
-  return apiCall(`/trainings/employee/${id}/complete`, {
+  const res = await apiCall(`/trainings/employee/${id}/complete`, {
     method: 'PUT',
-    body: JSON.stringify({ completedDate }),
+    body: JSON.stringify({ completedDate, completed_date: completedDate }),
   });
+  return mapEmployeeTraining(res);
 };
 
 export const apiUnassignTraining = async (id: string): Promise<void> => {

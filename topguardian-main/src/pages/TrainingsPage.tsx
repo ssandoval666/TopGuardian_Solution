@@ -7,6 +7,7 @@ import {
   type Training,
   type RecurrenceType,
 } from "@/services/trainingApi";
+import { byteArrayToUrl } from "@/services/planosApi";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -72,6 +73,7 @@ const TrainingsPage = () => {
   const [form, setForm] = useState<TrainingForm>(emptyForm);
   const [isSaving, setIsSaving] = useState(false);
   const [thumbnailPreview, setThumbnailPreview] = useState<string | null>(null);
+  const [previewPdf, setPreviewPdf] = useState<{ url: string; name: string } | null>(null);
 
   const [deleteTarget, setDeleteTarget] = useState<Training | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -196,6 +198,22 @@ const TrainingsPage = () => {
     }
   };
 
+  const handlePreviewPdf = (training: Training) => {
+    if (training.pdfData && training.pdfData.length > 0) {
+      const url = byteArrayToUrl(training.pdfData);
+      setPreviewPdf({ url, name: training.pdfFileName || "documento.pdf" });
+    } else {
+      toast.error("El archivo PDF no está disponible o está dañado.");
+    }
+  };
+
+  const closePreview = () => {
+    if (previewPdf) {
+      URL.revokeObjectURL(previewPdf.url);
+    }
+    setPreviewPdf(null);
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -292,10 +310,10 @@ const TrainingsPage = () => {
                   </TableCell>
                   <TableCell className="hidden lg:table-cell text-muted-foreground">
                     {t.pdfFileName ? (
-                      <span className="flex items-center gap-1 text-xs">
-                        <FileText className="h-3.5 w-3.5 text-primary" />
-                        {t.pdfFileName}
-                      </span>
+                      <Button variant="link" className="p-0 h-auto text-xs flex items-center gap-1" onClick={() => handlePreviewPdf(t)}>
+                        <FileText className="h-3.5 w-3.5 text-primary shrink-0" />
+                        <span className="truncate max-w-[150px]">{t.pdfFileName}</span>
+                      </Button>
                     ) : "—"}
                   </TableCell>
                   <TableCell className="text-right">
@@ -435,6 +453,27 @@ const TrainingsPage = () => {
               {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {editingTraining ? "Guardar" : "Crear"}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* PDF Preview Dialog */}
+      <Dialog open={!!previewPdf} onOpenChange={(open) => !open && closePreview()}>
+        <DialogContent className="sm:max-w-4xl h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="truncate">{previewPdf?.name}</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 min-h-0 bg-muted/20 rounded-md overflow-hidden relative border border-border">
+            {previewPdf && (
+              <iframe
+                src={previewPdf.url}
+                className="absolute inset-0 w-full h-full border-0"
+                title={previewPdf.name}
+              />
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={closePreview}>Cerrar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
