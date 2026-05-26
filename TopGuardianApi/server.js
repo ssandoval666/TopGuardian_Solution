@@ -208,7 +208,12 @@ const initDatabase = () => {
         last_seen DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users (id),
         UNIQUE(user_id)
-      )`
+      )`,
+      // Índices para mejorar drásticamente el rendimiento de lectura del chat
+      `CREATE INDEX IF NOT EXISTS idx_chat_messages_users ON chat_messages(from_user_id, to_user_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_chat_messages_unread ON chat_messages(to_user_id, read_status)`,
+      `CREATE INDEX IF NOT EXISTS idx_user_presence_online ON user_presence(is_online)`,
+      `CREATE INDEX IF NOT EXISTS idx_users_active ON users(active)`
     ];
 
     let completed = 0;

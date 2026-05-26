@@ -92,7 +92,9 @@ class ChatService {
 
   subscribe(fn: Listener) {
     this.listeners.add(fn);
-    return () => this.listeners.delete(fn);
+    return () => {
+      this.listeners.delete(fn);
+    };
   }
 
   async connect(userId: number) {
@@ -151,7 +153,9 @@ class ChatService {
 
     // Si recibimos un mensaje de otro usuario, actualizamos el conteo de no leídos
     if (message.from_user_id !== this.currentUserId) {
-      this.debouncedPollUpdates();
+      // Incrementamos localmente para evitar hacer peticiones HTTP al backend (Mejora de performance)
+      this.unreadByUser[message.from_user_id] = (this.unreadByUser[message.from_user_id] || 0) + 1;
+      this._snapshot.totalUnread += 1;
     }
     
     this.notify(); // Notifica a ChatWidget.tsx para re-renderizar
@@ -216,6 +220,13 @@ class ChatService {
       if (cached) {
         const updated = cached.map(m => ({ ...m, read_status: true }));
         this._convSnapshots.set(fromUserId, updated);
+      }
+
+      // Actualizar los conteos de no leídos localmente
+      const unreadCount = this.unreadByUser[fromUserId] || 0;
+      if (unreadCount > 0) {
+        this._snapshot.totalUnread = Math.max(0, this._snapshot.totalUnread - unreadCount);
+        this.unreadByUser[fromUserId] = 0;
       }
       this.notify();
     } catch (error) {
