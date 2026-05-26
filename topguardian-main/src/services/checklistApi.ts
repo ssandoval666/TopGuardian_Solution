@@ -84,8 +84,9 @@ export interface ChecklistVisit {
   entries: ChecklistEntry[];
 }
 
-export const apiFetchChecklistVisits = async (companyId: string): Promise<ChecklistVisit[]> => {
-  return apiCall(`/checklists/visits?companyId=${companyId}`);
+export const apiFetchChecklistVisits = async (companyId?: string): Promise<ChecklistVisit[]> => {
+  const query = companyId ? `?companyId=${companyId}` : '';
+  return apiCall(`/checklists/visits${query}`);
 };
 
 export const apiCreateChecklistVisit = async (visit: Omit<ChecklistVisit, "id">): Promise<ChecklistVisit> => {

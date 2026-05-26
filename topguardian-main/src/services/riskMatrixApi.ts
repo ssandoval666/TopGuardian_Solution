@@ -93,8 +93,9 @@ export const removeHazardCategory = (category: string) => {
   HAZARD_CATEGORIES = HAZARD_CATEGORIES.filter((c) => c !== category);
 };
 
-export const apiFetchRiskMatrices = async (companyId: string): Promise<RiskMatrix[]> => {
-  return apiCall(`/risk-matrices?companyId=${companyId}`);
+export const apiFetchRiskMatrices = async (companyId?: string): Promise<RiskMatrix[]> => {
+  const query = companyId ? `?companyId=${companyId}` : '';
+  return apiCall(`/risk-matrices${query}`);
 };
 
 export const apiFetchRiskMatrix = async (matrixId: string, companyId: string): Promise<RiskMatrix | null> => {

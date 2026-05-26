@@ -128,14 +128,12 @@ const RiskMatrixPage = () => {
   const [hazardCategories, setHazardCategories] = useState<string[]>(HAZARD_CATEGORIES);
 
   // Load matrices for ALL user companies
-  const loadMatrices = useCallback(async () => {
+  const loadMatrices = async () => {
     setLoading(true);
     try {
-      const allResults = await Promise.all(
-        companies.map((c) => apiFetchRiskMatrices(c.id))
-      );
+      const allResults = await apiFetchRiskMatrices();
       // Sanitizar la respuesta: Asegurar que los arrays estén inicializados para evitar el error "is not iterable"
-      const flatMatrices = allResults.flat().map(m => ({
+      const flatMatrices = allResults.map(m => ({
         ...m,
         sectors: m.sectors || [],
         hazards: m.hazards || [],
@@ -146,11 +144,11 @@ const RiskMatrixPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [companies]);
+  };
 
   useEffect(() => {
-    if (companies.length > 0) loadMatrices();
-  }, [loadMatrices, companies]);
+    loadMatrices();
+  }, []);
 
   const handleCreateMatrix = async () => {
     if (!newMatrixName.trim() || !newMatrixCompanyId) return;

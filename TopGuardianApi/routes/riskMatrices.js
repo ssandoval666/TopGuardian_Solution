@@ -24,15 +24,22 @@ const { authenticateToken } = require('../middleware/auth');
 router.get('/', authenticateToken, async (req, res) => {
   try {
     const { companyId } = req.query;
-    const matrices = await db.allAsync(`
+    
+    let sql = `
       SELECT rm.*,
              (SELECT JSON_GROUP_ARRAY(JSON_OBJECT('id', id, 'name', name)) FROM risk_matrix_sectors WHERE matrix_id = rm.id) as sectors,
              (SELECT JSON_GROUP_ARRAY(JSON_OBJECT('id', id, 'name', name, 'category', category)) FROM risk_matrix_hazards WHERE matrix_id = rm.id) as hazards,
              (SELECT JSON_GROUP_ARRAY(JSON_OBJECT('id', id, 'hazardId', hazard_id, 'sectorId', sector_id, 'probability', probability, 'severity', severity, 'riskScore', risk_score, 'riskLevel', risk_level, 'controlMeasure', control_measure)) FROM risk_matrix_cells WHERE matrix_id = rm.id) as cells
       FROM risk_matrices rm
-      WHERE rm.company_id = ?
-      ORDER BY rm.date DESC
-    `, [companyId]);
+    `;
+    const params = [];
+    if (companyId) {
+      sql += ` WHERE rm.company_id = ?`;
+      params.push(companyId);
+    }
+    sql += ` ORDER BY rm.date DESC`;
+
+    const matrices = await db.allAsync(sql, params);
 
     // Parse JSON data
     const matricesWithData = matrices.map(matrix => ({

@@ -85,12 +85,12 @@ const ChecklistVisitsPage = () => {
   // Delete confirmation
   const [deletingVisit, setDeletingVisit] = useState<ChecklistVisit | null>(null);
 
-  const loadData = useCallback(async () => {
+  const loadData = async () => {
     setLoading(true);
     try {
       const [items, allVisits] = await Promise.all([
         apiFetchChecklistItems(),
-        Promise.all(companies.map((c) => apiFetchChecklistVisits(c.id))).then((r) => r.flat()),
+        apiFetchChecklistVisits(),
       ]);
       setChecklistItems(items);
       // Mapeamos los datos del backend (snake_case) al formato que espera el frontend (camelCase)
@@ -103,11 +103,11 @@ const ChecklistVisitsPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [companies]);
+  };
 
   useEffect(() => {
-    if (companies.length > 0) loadData();
-  }, [loadData, companies]);
+    loadData();
+  }, []);
 
   const getApprovalPercent = (visit: ChecklistVisit) => {
     if (visit.entries.length === 0) return 0;

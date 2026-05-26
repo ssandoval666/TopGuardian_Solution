@@ -161,7 +161,8 @@ router.delete('/items/:id', authenticateToken, async (req, res) => {
 router.get('/visits', authenticateToken, async (req, res) => {
   try {
     const { companyId } = req.query;
-    const visits = await db.allAsync(`
+    
+    let sql = `
       SELECT cv.*, c.name as company_name,
              GROUP_CONCAT(
                JSON_OBJECT(
@@ -175,10 +176,15 @@ router.get('/visits', authenticateToken, async (req, res) => {
       JOIN companies c ON cv.company_id = c.id
       LEFT JOIN checklist_entries ce ON cv.id = ce.visit_id
       LEFT JOIN checklist_items ci ON ce.item_id = ci.id
-      WHERE cv.company_id = ?
-      GROUP BY cv.id
-      ORDER BY cv.visit_date DESC
-    `, [companyId]);
+    `;
+    const params = [];
+    if (companyId) {
+      sql += ` WHERE cv.company_id = ?`;
+      params.push(companyId);
+    }
+    sql += ` GROUP BY cv.id ORDER BY cv.visit_date DESC`;
+
+    const visits = await db.allAsync(sql, params);
 
     // Parse the JSON entries
     const visitsWithEntries = visits.map(visit => {

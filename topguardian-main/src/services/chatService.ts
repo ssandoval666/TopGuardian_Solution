@@ -38,9 +38,6 @@ class ChatService {
     if (!this.currentUserId) return;
 
     try {
-      // Update presence
-      await this.updatePresence(true);
-
       // Get updated user list and unread counts
       const [users, unreadData] = await Promise.all([
         this.fetchUsers(),
@@ -106,7 +103,6 @@ class ChatService {
 
     this.socket.on('connect', () => {
       this.socket?.emit('join_chat', userId);
-      this.updatePresence(true);
       this.pollUpdates(); // Cargar estado inicial y conteo de no leídos
     });
 
@@ -166,23 +162,7 @@ class ChatService {
       this.socket.disconnect();
       this.socket = null;
     }
-    if (this.currentUserId) {
-      await this.updatePresence(false);
-      this.currentUserId = null;
-    }
-  }
-
-  private async updatePresence(isOnline: boolean) {
-    if (!this.currentUserId) return;
-
-    try {
-      await apiCall('/chat/presence', {
-        method: 'POST',
-        body: JSON.stringify({ is_online: isOnline }),
-      });
-    } catch (error) {
-      console.error('Error updating presence:', error);
-    }
+    this.currentUserId = null;
   }
 
   async sendMessage(toUserId: number, text: string) {
