@@ -187,6 +187,18 @@ const initDatabase = () => {
         FOREIGN KEY (from_user_id) REFERENCES users (id),
         FOREIGN KEY (to_user_id) REFERENCES users (id)
       )`,
+      `CREATE TABLE IF NOT EXISTS appointments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        date TEXT NOT NULL,
+        start_time TEXT NOT NULL,
+        end_time TEXT NOT NULL,
+        notes TEXT,
+        completed BOOLEAN DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users (id)
+      )`,
       `CREATE TABLE IF NOT EXISTS menus (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         key TEXT NOT NULL,
@@ -461,6 +473,7 @@ const riskMatrixRoutes = require('./routes/riskMatrices');
 const menuRoutes = require('./routes/menu');
 const chatRoutes = require('./routes/chat');
 const rolesRoutes = require('./routes/roles');
+const calendarRoutes = require('./routes/calendar');
 
 // Override para asegurar que el chat muestre TODOS los usuarios reales de la DB sin hardcode
 app.get('/chat/users', (req, res) => {
@@ -487,6 +500,7 @@ app.use('/risk-matrices', riskMatrixRoutes);
 app.use('/menu', menuRoutes);
 app.use('/chat', chatRoutes);
 app.use('/roles', rolesRoutes);
+app.use('/calendar', calendarRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

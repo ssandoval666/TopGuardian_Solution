@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   getAppointmentsByMonth,
@@ -66,20 +66,26 @@ const CalendarPage = () => {
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
 
-  const refreshMonth = () => {
+  const refreshMonth = useCallback(async () => {
     if (!user) return;
-    seedDemoData(user.id);
-    setMonthAppointments(getAppointmentsByMonth(user.id, year, month));
-  };
+    await seedDemoData(user.id);
+    try {
+      const appts = await getAppointmentsByMonth(user.id, year, month);
+      setMonthAppointments(appts || []);
+    } catch (e) { console.error("Error cargando citas del mes", e); }
+  }, [user, year, month]);
 
-  const refreshDay = (date: string) => {
+  const refreshDay = useCallback(async (date: string) => {
     if (!user) return;
-    setDayAppointments(getAppointmentsByDate(user.id, date));
-  };
+    try {
+      const appts = await getAppointmentsByDate(user.id, date);
+      setDayAppointments(appts || []);
+    } catch (e) { console.error("Error cargando citas del día", e); }
+  }, [user]);
 
   useEffect(() => {
     refreshMonth();
-  }, [user, year, month]);
+  }, [refreshMonth]);
 
   // Calendar grid
   const calendarDays = useMemo(() => {
@@ -122,9 +128,9 @@ const CalendarPage = () => {
   const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
   const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
 
-  const openDay = (dateStr: string) => {
+  const openDay = async (dateStr: string) => {
     setSelectedDay(dateStr);
-    refreshDay(dateStr);
+    await refreshDay(dateStr);
     setShowDayDialog(true);
   };
 
@@ -147,17 +153,17 @@ const CalendarPage = () => {
     setShowForm(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!user || !selectedDay || !form.title.trim()) return;
     if (editMode && selectedAppt) {
-      updateAppointment(selectedAppt.id, {
+      await updateAppointment(selectedAppt.id, {
         title: form.title,
         startTime: form.startTime,
         endTime: form.endTime,
         notes: form.notes,
       });
     } else {
-      addAppointment({
+      await addAppointment({
         title: form.title,
         date: selectedDay,
         startTime: form.startTime,
@@ -168,17 +174,17 @@ const CalendarPage = () => {
       });
     }
     setShowForm(false);
-    refreshDay(selectedDay);
-    refreshMonth();
+    await refreshDay(selectedDay);
+    await refreshMonth();
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!selectedAppt || !selectedDay) return;
-    deleteAppointment(selectedAppt.id);
+    await deleteAppointment(selectedAppt.id);
     setShowDeleteConfirm(false);
     setShowDetail(false);
-    refreshDay(selectedDay);
-    refreshMonth();
+    await refreshDay(selectedDay);
+    await refreshMonth();
   };
 
   const openApptDetail = (appt: Appointment) => {

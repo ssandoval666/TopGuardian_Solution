@@ -19,11 +19,19 @@ const CalendarWidget = () => {
 
   const today = new Date().toISOString().split("T")[0];
 
-  const refresh = useCallback(() => {
+  const refresh = useCallback(async () => {
     if (!user) return;
-    seedDemoData(user.id);
-    setAppointments(getAppointmentsByDate(user.id, today));
-    setPendingCount(getTodayPendingCount(user.id));
+    await seedDemoData(user.id); // Placeholder para no romper import
+    try {
+      const [appts, count] = await Promise.all([
+        getAppointmentsByDate(user.id, today),
+        getTodayPendingCount(user.id)
+      ]);
+      setAppointments(appts || []);
+      setPendingCount(count || 0);
+    } catch (error) {
+      console.error("Error al cargar citas del widget:", error);
+    }
   }, [user, today]);
 
   useEffect(() => {
@@ -32,9 +40,9 @@ const CalendarWidget = () => {
     return () => clearInterval(interval);
   }, [refresh]);
 
-  const handleComplete = (id: string) => {
-    markCompleted(id);
-    refresh();
+  const handleComplete = async (id: string) => {
+    await markCompleted(id);
+    await refresh();
   };
 
   const isPast = (time: string) => {

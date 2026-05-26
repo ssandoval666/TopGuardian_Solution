@@ -1,7 +1,7 @@
 /**
- * Calendar service with localStorage persistence.
- * Mock data for appointments with cross-tab sync via storage events.
+ * Calendar service integrated with backend API.
  */
+import { apiCall } from './api';
 
 export interface Appointment {
   id: string;
@@ -14,90 +14,44 @@ export interface Appointment {
   userId: string;
 }
 
-const STORAGE_KEY = "tg_calendar_appointments";
+export const getAppointmentsByDate = async (userId: string, date: string): Promise<Appointment[]> => {
+  return apiCall(`/calendar?date=${date}`);
+};
 
-function generateId(): string {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-}
+export const getAppointmentsByMonth = async (userId: string, year: number, month: number): Promise<Appointment[]> => {
+  // Month parameter format YYYY-MM
+  const formattedMonth = String(month + 1).padStart(2, "0");
+  return apiCall(`/calendar?month=${year}-${formattedMonth}`);
+};
 
-function getAll(): Appointment[] {
-  try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-  } catch {
-    return [];
-  }
-}
+export const getTodayPendingCount = async (userId: string): Promise<number> => {
+  const res = await apiCall(`/calendar/pending-count`);
+  return res.count || 0;
+};
 
-function saveAll(appointments: Appointment[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(appointments));
-}
+export const addAppointment = async (appt: Omit<Appointment, "id">): Promise<Appointment> => {
+  return apiCall('/calendar', {
+    method: 'POST',
+    body: JSON.stringify(appt),
+  });
+};
 
-// Seed some demo data if empty
-export function seedDemoData(userId: string) {
-  const existing = getAll().filter((a) => a.userId === userId);
-  if (existing.length > 0) return;
+export const updateAppointment = async (id: string, updates: Partial<Appointment>): Promise<Appointment> => {
+  return apiCall(`/calendar/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(updates),
+  });
+};
 
-  const today = new Date();
-  const fmt = (d: Date) => d.toISOString().split("T")[0];
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
+export const deleteAppointment = async (id: string): Promise<void> => {
+  return apiCall(`/calendar/${id}`, {
+    method: 'DELETE',
+  });
+};
 
-  const demos: Omit<Appointment, "id">[] = [
-    { title: "Reunión de equipo", date: fmt(today), startTime: "09:00", endTime: "09:30", notes: "Revisión semanal del proyecto", completed: false, userId },
-    { title: "Revisión de seguridad", date: fmt(today), startTime: "11:00", endTime: "12:00", notes: "Auditoría de accesos", completed: false, userId },
-    { title: "Capacitación SST", date: fmt(today), startTime: "14:30", endTime: "15:30", notes: "Módulo 3 - Riesgos eléctricos", completed: false, userId },
-    { title: "Inspección planta", date: fmt(tomorrow), startTime: "08:00", endTime: "10:00", notes: "Planta norte", completed: false, userId },
-    { title: "Entrega de informe", date: fmt(yesterday), startTime: "16:00", endTime: "16:30", notes: "Informe mensual", completed: true, userId },
-  ];
-
-  const all = getAll();
-  demos.forEach((d) => all.push({ ...d, id: generateId() }));
-  saveAll(all);
-}
-
-export function getAppointmentsByDate(userId: string, date: string): Appointment[] {
-  return getAll()
-    .filter((a) => a.userId === userId && a.date === date)
-    .sort((a, b) => a.startTime.localeCompare(b.startTime));
-}
-
-export function getAppointmentsByMonth(userId: string, year: number, month: number): Appointment[] {
-  const prefix = `${year}-${String(month + 1).padStart(2, "0")}`;
-  return getAll().filter((a) => a.userId === userId && a.date.startsWith(prefix));
-}
-
-export function getTodayPendingCount(userId: string): number {
-  const today = new Date().toISOString().split("T")[0];
-  return getAll().filter((a) => a.userId === userId && a.date === today && !a.completed).length;
-}
-
-export function addAppointment(appt: Omit<Appointment, "id">): Appointment {
-  const all = getAll();
-  const newAppt: Appointment = { ...appt, id: generateId() };
-  all.push(newAppt);
-  saveAll(all);
-  return newAppt;
-}
-
-export function updateAppointment(id: string, updates: Partial<Appointment>): Appointment | null {
-  const all = getAll();
-  const idx = all.findIndex((a) => a.id === id);
-  if (idx === -1) return null;
-  all[idx] = { ...all[idx], ...updates };
-  saveAll(all);
-  return all[idx];
-}
-
-export function deleteAppointment(id: string): boolean {
-  const all = getAll();
-  const filtered = all.filter((a) => a.id !== id);
-  if (filtered.length === all.length) return false;
-  saveAll(filtered);
-  return true;
-}
-
-export function markCompleted(id: string): Appointment | null {
+export const markCompleted = async (id: string): Promise<Appointment> => {
   return updateAppointment(id, { completed: true });
-}
+};
+
+// Mantenemos esta función vacía para no romper imports antiguos en componentes UI
+export const seedDemoData = async (userId: string) => {};
