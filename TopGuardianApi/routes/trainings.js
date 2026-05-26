@@ -231,6 +231,77 @@ router.delete('/:id', authenticateToken, async (req, res) => {
   }
 });
 
+// ---- Training Questionnaires ----
+
+/**
+ * @swagger
+ * /trainings/{id}/questionnaire:
+ *   get:
+ *     summary: Get training questionnaire
+ *     tags: [Trainings]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Training questionnaire
+ */
+router.get('/:id/questionnaire', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const row = await db.getAsync('SELECT * FROM training_questionnaires WHERE training_id = ?', [id]);
+    
+    if (!row) {
+      return res.json({ minPassingScore: 0, questions: [] });
+    }
+
+    res.json({
+      minPassingScore: row.min_passing_score,
+      questions: JSON.parse(row.questions_json)
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * @swagger
+ * /trainings/{id}/questionnaire:
+ *   put:
+ *     summary: Save training questionnaire
+ *     tags: [Trainings]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ */
+router.put('/:id/questionnaire', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { minPassingScore, questions } = req.body;
+    const questionsJson = JSON.stringify(questions || []);
+
+    await db.runAsync(
+      `INSERT INTO training_questionnaires (training_id, min_passing_score, questions_json) VALUES (?, ?, ?)
+       ON CONFLICT(training_id) DO UPDATE SET min_passing_score = excluded.min_passing_score, questions_json = excluded.questions_json`,
+      [id, minPassingScore || 0, questionsJson]
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ---- Company Trainings ----
 
 /**

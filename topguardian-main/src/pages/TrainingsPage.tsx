@@ -4,8 +4,11 @@ import {
   apiCreateTraining,
   apiUpdateTraining,
   apiDeleteTraining,
+  apiGetTrainingQuestionnaire,
+  apiSaveTrainingQuestionnaire,
   type Training,
   type RecurrenceType,
+  type TrainingQuestionnaire,
 } from "@/services/trainingApi";
 import { byteArrayToUrl } from "@/services/planosApi";
 import { Button } from "@/components/ui/button";
@@ -28,7 +31,7 @@ import {
 import {
   Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious,
 } from "@/components/ui/pagination";
-import { Search, Plus, Pencil, Trash2, Loader2, GraduationCap, FileUp, FileText, RefreshCw, ImagePlus } from "lucide-react";
+import { Search, Plus, Pencil, Trash2, Loader2, GraduationCap, FileUp, FileText, RefreshCw, ImagePlus, ClipboardList, CheckCircle2, Circle, X } from "lucide-react";
 import { toast } from "sonner";
 
 const PAGE_SIZE = 5;
@@ -61,6 +64,24 @@ const RECURRENCE_LABELS: Record<RecurrenceType, string> = {
   yearly: "Anual",
 };
 
+// Componente optimizado para mostrar imágenes en la grilla sin fugas de memoria (Memory Leaks)
+const ThumbnailImage = ({ data, alt }: { data?: number[], alt: string }) => {
+  const [url, setUrl] = useState<string | null>(null);
+  
+  useEffect(() => {
+    if (data && data.length > 0) {
+      const blob = new Blob([new Uint8Array(data)]);
+      const objectUrl = URL.createObjectURL(blob);
+      setUrl(objectUrl);
+      return () => URL.revokeObjectURL(objectUrl); // Libera la memoria automáticamente
+    }
+  }, [data]);
+  
+  if (!url) return <div className="h-10 w-10 rounded bg-muted flex items-center justify-center"><GraduationCap className="h-5 w-5 text-muted-foreground" /></div>;
+  
+  return <img src={url} alt={alt} className="h-10 w-10 rounded object-cover" />;
+};
+
 const TrainingsPage = () => {
   const [trainings, setTrainings] = useState<Training[]>([]);
   const [total, setTotal] = useState(0);
@@ -77,6 +98,11 @@ const TrainingsPage = () => {
 
   const [deleteTarget, setDeleteTarget] = useState<Training | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  const [questionnaireDialogOpen, setQuestionnaireDialogOpen] = useState(false);
+  const [questionnaireTraining, setQuestionnaireTraining] = useState<Training | null>(null);
+  const [questionnaireData, setQuestionnaireData] = useState<TrainingQuestionnaire>({ minPassingScore: 0, questions: [] });
+  const [isLoadingQuestionnaire, setIsLoadingQuestionnaire] = useState(false);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -165,6 +191,14 @@ const TrainingsPage = () => {
       toast.error("Título e Instructor son obligatorios");
       return;
     }
+    if (!form.thumbnailData || form.thumbnailData.length === 0) {
+      toast.error("La imagen (Thumbnail) es obligatoria");
+      return;
+    }
+    if (!form.pdfData || form.pdfData.length === 0) {
+      toast.error("El archivo PDF es obligatorio");
+      return;
+    }
     setIsSaving(true);
     try {
       if (editingTraining) {
@@ -196,6 +230,70 @@ const TrainingsPage = () => {
     } finally {
       setIsDeleting(false);
     }
+  };
+
+  const openQuestionnaire = async (training: Training) => {
+    setQuestionnaireTraining(training);
+    setQuestionnaireDialogOpen(true);
+    setIsLoadingQuestionnaire(true);
+    try {
+      const data = await apiGetTrainingQuestionnaire(training.id);
+      setQuestionnaireData(data);
+    } catch {
+      toast.error("Error al cargar el cuestionario");
+    } finally {
+      setIsLoadingQuestionnaire(false);
+    }
+  };
+
+  const handleSaveQuestionnaire = async () => {
+    if (!questionnaireTraining) return;
+    setIsSaving(true);
+    try {
+      await apiSaveTrainingQuestionnaire(questionnaireTraining.id, questionnaireData);
+      toast.success("Cuestionario guardado exitosamente");
+      setQuestionnaireDialogOpen(false);
+    } catch {
+      toast.error("Error al guardar el cuestionario");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const addQuestion = () => {
+    setQuestionnaireData(prev => ({
+      ...prev,
+      questions: [
+        ...prev.questions,
+        { id: "q" + Date.now(), text: "", options: [{ id: "o" + Date.now(), text: "", isCorrect: true }] }
+      ]
+    }));
+  };
+
+  const updateQuestion = (qId: string, text: string) => {
+    setQuestionnaireData(prev => ({ ...prev, questions: prev.questions.map(q => q.id === qId ? { ...q, text } : q) }));
+  };
+
+  const removeQuestion = (qId: string) => {
+    setQuestionnaireData(prev => ({ ...prev, questions: prev.questions.filter(q => q.id !== qId) }));
+  };
+
+  const addOption = (qId: string) => {
+    setQuestionnaireData(prev => ({ ...prev, questions: prev.questions.map(q => q.id === qId ? {
+      ...q, options: [...q.options, { id: "o" + Date.now() + Math.random(), text: "", isCorrect: false }]
+    } : q) }));
+  };
+
+  const updateOptionText = (qId: string, oId: string, text: string) => {
+    setQuestionnaireData(prev => ({ ...prev, questions: prev.questions.map(q => q.id === qId ? { ...q, options: q.options.map(o => o.id === oId ? { ...o, text } : o) } : q) }));
+  };
+
+  const setCorrectOption = (qId: string, oId: string) => {
+    setQuestionnaireData(prev => ({ ...prev, questions: prev.questions.map(q => q.id === qId ? { ...q, options: q.options.map(o => ({ ...o, isCorrect: o.id === oId })) } : q) }));
+  };
+
+  const removeOption = (qId: string, oId: string) => {
+    setQuestionnaireData(prev => ({ ...prev, questions: prev.questions.map(q => q.id === qId ? { ...q, options: q.options.filter(o => o.id !== oId) } : q) }));
   };
 
   const handlePreviewPdf = (training: Training) => {
@@ -275,24 +373,10 @@ const TrainingsPage = () => {
                 </TableCell>
               </TableRow>
             ) : (
-              trainings.map((t) => {
-                const thumbUrl = t.thumbnailData && t.thumbnailData.length > 0
-                  ? URL.createObjectURL(new Blob([new Uint8Array(t.thumbnailData)], { type: "image/png" }))
-                  : null;
-                return (
+              trainings.map((t) => (
                 <TableRow key={t.id}>
                   <TableCell>
-                    {thumbUrl ? (
-                      <img
-                        src={thumbUrl}
-                        alt={t.title}
-                        className="h-10 w-10 rounded object-cover"
-                      />
-                    ) : (
-                      <div className="h-10 w-10 rounded bg-muted flex items-center justify-center">
-                        <GraduationCap className="h-5 w-5 text-muted-foreground" />
-                      </div>
-                    )}
+                    <ThumbnailImage data={t.thumbnailData} alt={t.title} />
                   </TableCell>
                   <TableCell className="font-medium text-foreground">{t.title}</TableCell>
                   <TableCell className="text-muted-foreground">{t.instructor}</TableCell>
@@ -318,6 +402,9 @@ const TrainingsPage = () => {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
+                      <Button variant="ghost" size="icon" onClick={() => openQuestionnaire(t)} title="Cargar Cuestionario">
+                        <ClipboardList className="h-4 w-4 text-primary" />
+                      </Button>
                       <Button variant="ghost" size="icon" onClick={() => openEdit(t)} title="Editar">
                         <Pencil className="h-4 w-4" />
                       </Button>
@@ -327,8 +414,7 @@ const TrainingsPage = () => {
                     </div>
                   </TableCell>
                 </TableRow>
-                );
-              })
+              ))
             )}
           </TableBody>
         </Table>
@@ -373,7 +459,7 @@ const TrainingsPage = () => {
           <div className="space-y-4 py-2">
             {/* Thumbnail */}
             <div className="space-y-2">
-              <Label>Imagen (Thumbnail)</Label>
+              <Label>Imagen (Thumbnail) *</Label>
               <div className="flex items-center gap-4">
                 {thumbnailPreview ? (
                   <img src={thumbnailPreview} alt="Thumbnail" className="h-16 w-16 rounded-lg object-cover border border-border" />
@@ -431,7 +517,7 @@ const TrainingsPage = () => {
               </div>
             </div>
             <div className="space-y-2">
-              <Label>Archivo PDF</Label>
+              <Label>Archivo PDF *</Label>
               <div className="flex items-center gap-3">
                 <label className="flex items-center gap-2 px-4 py-2 rounded-md border border-input bg-background text-sm cursor-pointer hover:bg-accent hover:text-accent-foreground transition-colors">
                   <FileUp className="h-4 w-4" />
@@ -452,6 +538,113 @@ const TrainingsPage = () => {
             <Button onClick={handleSave} disabled={isSaving}>
               {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {editingTraining ? "Guardar" : "Crear"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Questionnaire Dialog */}
+      <Dialog open={questionnaireDialogOpen} onOpenChange={setQuestionnaireDialogOpen}>
+        <DialogContent className="sm:max-w-3xl max-h-[90vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Cuestionario: {questionnaireTraining?.title}</DialogTitle>
+            <DialogDescription>
+              Configurá las preguntas y la forma de evaluación de la capacitación.
+            </DialogDescription>
+          </DialogHeader>
+
+          {isLoadingQuestionnaire ? (
+            <div className="flex justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <div className="flex-1 overflow-y-auto pr-2 space-y-6 min-h-0">
+              <div className="space-y-2">
+                <Label>Respuestas correctas requeridas para aprobar</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={questionnaireData.questions.length}
+                  value={String(questionnaireData.minPassingScore)}
+                  onChange={(e) => setQuestionnaireData({ ...questionnaireData, minPassingScore: parseInt(e.target.value) || 0 })}
+                  className="w-32"
+                />
+                <p className="text-xs text-muted-foreground">
+                  El usuario debe responder al menos esta cantidad de preguntas correctamente para dar por cumplida la capacitación.
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                <h3 className="font-semibold text-foreground flex items-center justify-between">
+                  Preguntas ({questionnaireData.questions.length})
+                  <Button variant="outline" size="sm" onClick={addQuestion}>
+                    <Plus className="h-4 w-4 mr-2" /> Agregar Pregunta
+                  </Button>
+                </h3>
+
+                {questionnaireData.questions.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-8 border border-dashed rounded-lg">
+                    No hay preguntas configuradas.
+                  </p>
+                ) : (
+                  questionnaireData.questions.map((q, qIndex) => (
+                    <div key={q.id} className="p-4 border border-border rounded-lg bg-muted/20 space-y-4">
+                      <div className="flex items-start gap-2">
+                        <span className="font-medium mt-2">{qIndex + 1}.</span>
+                        <Input
+                          value={q.text}
+                          onChange={(e) => updateQuestion(q.id, e.target.value)}
+                          placeholder="Escribe la pregunta aquí..."
+                          className="flex-1"
+                        />
+                        <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive shrink-0" onClick={() => removeQuestion(q.id)}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+
+                      <div className="pl-6 space-y-2">
+                        {q.options.map((opt) => (
+                          <div key={opt.id} className="flex items-center gap-2">
+                            <button
+                              onClick={() => setCorrectOption(q.id, opt.id)}
+                              className="shrink-0 text-muted-foreground hover:text-primary transition-colors focus:outline-none"
+                              title={opt.isCorrect ? "Opción correcta" : "Marcar como correcta"}
+                            >
+                              {opt.isCorrect ? (
+                                <CheckCircle2 className="h-5 w-5 text-green-500" />
+                              ) : (
+                                <Circle className="h-5 w-5" />
+                              )}
+                            </button>
+                            <Input
+                              value={opt.text}
+                              onChange={(e) => updateOptionText(q.id, opt.id, e.target.value)}
+                              placeholder="Texto de la opción..."
+                              className={`flex-1 h-9 ${opt.isCorrect ? "border-green-500/50 bg-green-500/5" : ""}`}
+                            />
+                            {q.options.length > 1 && (
+                              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive shrink-0" onClick={() => removeOption(q.id, opt.id)}>
+                                <X className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
+                        ))}
+                        <Button variant="ghost" size="sm" className="mt-2 text-xs" onClick={() => addOption(q.id)}>
+                          <Plus className="h-3 w-3 mr-1" /> Agregar Opción
+                        </Button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="mt-4 pt-4 border-t border-border">
+            <Button variant="outline" onClick={() => setQuestionnaireDialogOpen(false)}>Cancelar</Button>
+            <Button onClick={handleSaveQuestionnaire} disabled={isSaving || isLoadingQuestionnaire}>
+              {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Guardar Cuestionario
             </Button>
           </DialogFooter>
         </DialogContent>

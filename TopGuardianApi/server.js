@@ -117,6 +117,12 @@ const initDatabase = () => {
         FOREIGN KEY (employee_id) REFERENCES employees (id),
         FOREIGN KEY (training_id) REFERENCES trainings (id)
       )`,
+      `CREATE TABLE IF NOT EXISTS training_questionnaires (
+        training_id INTEGER PRIMARY KEY,
+        min_passing_score INTEGER DEFAULT 0,
+        questions_json TEXT NOT NULL,
+        FOREIGN KEY (training_id) REFERENCES trainings (id) ON DELETE CASCADE
+      )`,
       `CREATE TABLE IF NOT EXISTS planos (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
@@ -266,7 +272,7 @@ const insertMockData = async () => {
   try {
     // Clear existing data to avoid duplicates
     const clearTables = async () => {
-      const tablesToClear = ['users', 'companies', 'company_users', 'employees', 'trainings', 'company_trainings', 'employee_trainings', 'planos', 'checklist_items', 'checklist_visits', 'checklist_entries', 'risk_matrices', 'risk_matrix_sectors', 'risk_matrix_hazards', 'risk_matrix_cells', 'chat_messages', 'menus', 'roles'];
+      const tablesToClear = ['users', 'companies', 'company_users', 'employees', 'trainings', 'training_questionnaires', 'company_trainings', 'employee_trainings', 'planos', 'checklist_items', 'checklist_visits', 'checklist_entries', 'risk_matrices', 'risk_matrix_sectors', 'risk_matrix_hazards', 'risk_matrix_cells', 'chat_messages', 'menus', 'roles'];
       for (const table of tablesToClear) {
         await new Promise((resolve, reject) => {
           db.run(`DELETE FROM ${table}`, (err) => {

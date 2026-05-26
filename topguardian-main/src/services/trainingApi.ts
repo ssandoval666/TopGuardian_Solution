@@ -48,6 +48,23 @@ export interface Training {
   thumbnailData?: number[]; // array de bytes (imagen)
 }
 
+export interface QuestionnaireOption {
+  id: string;
+  text: string;
+  isCorrect: boolean;
+}
+
+export interface QuestionnaireQuestion {
+  id: string;
+  text: string;
+  options: QuestionnaireOption[];
+}
+
+export interface TrainingQuestionnaire {
+  minPassingScore: number;
+  questions: QuestionnaireQuestion[];
+}
+
 export interface TrainingListParams {
   page: number;
   pageSize: number;
@@ -93,6 +110,17 @@ export const apiFetchTrainingList = async (params: TrainingListParams): Promise<
     res.data = res.data.map(mapTraining);
   }
   return res;
+};
+
+export const apiGetTrainingQuestionnaire = async (id: string): Promise<TrainingQuestionnaire> => {
+  return apiCall(`/trainings/${id}/questionnaire`);
+};
+
+export const apiSaveTrainingQuestionnaire = async (id: string, data: TrainingQuestionnaire): Promise<void> => {
+  return apiCall(`/trainings/${id}/questionnaire`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
 };
 
 export const apiCreateTraining = async (training: Omit<Training, "id">): Promise<Training> => {
