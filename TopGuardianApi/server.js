@@ -1,4 +1,6 @@
 const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
 const cors = require('cors');
 const swaggerUi = require('swagger-ui-express');
 const swaggerJsdoc = require('swagger-jsdoc');
@@ -7,6 +9,13 @@ const path = require('path');
 const fs = require('fs');
 
 const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: "*", // Nota: En producción cambia esto por la URL de tu frontend (ej: 'http://localhost:3000')
+    methods: ["GET", "POST"]
+  }
+});
 const PORT = process.env.PORT || 9000;
 
 // Middleware
@@ -451,6 +460,20 @@ const menuRoutes = require('./routes/menu');
 const chatRoutes = require('./routes/chat');
 const rolesRoutes = require('./routes/roles');
 
+// Override para asegurar que el chat muestre TODOS los usuarios reales de la DB sin hardcode
+app.get('/chat/users', (req, res) => {
+  const sql = `
+    SELECT u.id, u.name, u.username, IFNULL(p.is_online, 0) as online
+    FROM users u
+    LEFT JOIN user_presence p ON u.id = p.user_id
+    WHERE u.active = 1
+  `;
+  db.all(sql, [], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows.map(r => ({ ...r, online: Boolean(r.online) })));
+  });
+});
+
 app.use('/auth', authRoutes);
 app.use('/companies', companyRoutes);
 app.use('/users', userRoutes);
@@ -489,10 +512,84 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Something went wrong!' });
 });
 
+// =========================================
+// Configuración de WebSockets (Socket.io)
+// =========================================
+io.on('connection', (socket) => {
+  let currentUserId = null;
+
+  console.log(`[WebSocket] Nuevo usuario conectado: ${socket.id}`);
+
+  // El usuario se une a una sala personal utilizando su ID para recibir mensajes privados
+  socket.on('join_chat', (userId) => {
+    currentUserId = userId;
+    socket.join(userId.toString());
+    console.log(`[WebSocket] Usuario ${socket.id} asociado a userId: ${userId}`);
+
+    // Registrar al usuario como conectado
+    const sql = `INSERT INTO user_presence (user_id, is_online, last_seen) VALUES (?, 1, CURRENT_TIMESTAMP)
+                 ON CONFLICT(user_id) DO UPDATE SET is_online = 1, last_seen = CURRENT_TIMESTAMP`;
+    db.run(sql, [userId], () => {
+      io.emit('user_status_change', { userId, online: true });
+      
+      // Enviar mensajes offline pendientes al usuario automáticamente al conectarse
+      const unreadSql = 'SELECT * FROM chat_messages WHERE to_user_id = ? AND read_status = 0';
+      db.all(unreadSql, [userId], (err, rows) => {
+        if (err) return;
+        rows.forEach(msg => {
+          socket.emit('receive_message', {
+            ...msg,
+            read_status: Boolean(msg.read_status)
+          });
+        });
+      });
+    });
+  });
+
+  // Escuchar cuando se envía un nuevo mensaje
+  socket.on('send_message', (data) => {
+    const { from_user_id, to_user_id, message_text } = data;
+    
+    // 1. Guardar el mensaje en la tabla chat_messages de tu SQLite
+    const sql = 'INSERT INTO chat_messages (from_user_id, to_user_id, message_text) VALUES (?, ?, ?)';
+    db.run(sql, [from_user_id, to_user_id, message_text], function(err) {
+      if (err) {
+        console.error('[WebSocket] Error guardando mensaje en la BD:', err);
+        return;
+      }
+      
+      // 2. Emitir en tiempo real al destinatario y al remitente
+      const newMessage = { id: this.lastID, from_user_id, to_user_id, message_text, timestamp: new Date().toISOString(), read_status: false };
+      io.to(to_user_id.toString()).emit('receive_message', newMessage);
+      socket.emit('receive_message', newMessage); // Confirma al front que se guardó
+    });
+  });
+
+  // Escuchar cuando un usuario avisa que ha leído los mensajes
+  socket.on('messages_read', (data) => {
+    const { from_user_id, to_user_id } = data;
+    io.to(from_user_id.toString()).emit('messages_read_by_user', { read_by: to_user_id });
+  });
+
+  socket.on('disconnect', () => {
+    console.log(`[WebSocket] Usuario desconectado: ${socket.id}`);
+    if (currentUserId) {
+      // Marcar usuario como desconectado
+      const sql = `UPDATE user_presence SET is_online = 0, last_seen = CURRENT_TIMESTAMP WHERE user_id = ?`;
+      db.run(sql, [currentUserId], () => io.emit('user_status_change', { userId: currentUserId, online: false }));
+    }
+  });
+});
+
 // Start server
 initDatabase().then(() => {
-  app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+  // Limpiar estados colgados: poner a todos los usuarios como offline al arrancar el servidor
+  db.run("UPDATE user_presence SET is_online = 0", (err) => {
+    if (err) console.error("Error reseteando presencia:", err);
+  });
+
+  server.listen(PORT, () => {
+    console.log(`Server running on port ${PORT} (with WebSockets)`);
     console.log(`API docs available at http://localhost:${PORT}/api-docs`);
   });
 }).catch(err => {

@@ -3,6 +3,7 @@
  */
 
 import { apiCall } from './api';
+import { io, Socket } from 'socket.io-client';
 
 export interface ChatUser {
   id: number;
@@ -27,13 +28,11 @@ class ChatService {
   private listeners: Set<Listener> = new Set();
   private _snapshot: { users: ChatUser[]; totalUnread: number } = { users: [], totalUnread: 0 };
   private _convSnapshots: Map<number, ChatMessage[]> = new Map();
-  private pollInterval: ReturnType<typeof setInterval> | null = null;
   private unreadByUser: Record<number, number> = {};
+  private socket: Socket | null = null;
+  private pollTimeout: ReturnType<typeof setTimeout> | null = null;
 
-  constructor() {
-    // Disable automatic polling to prevent infinite re-renders
-    // this.pollInterval = setInterval(() => this.pollUpdates(), 10000);
-  }
+  constructor() {}
 
   private async pollUpdates() {
     if (!this.currentUserId) return;
@@ -80,6 +79,13 @@ class ChatService {
     }
   }
 
+  private debouncedPollUpdates() {
+    if (this.pollTimeout) clearTimeout(this.pollTimeout);
+    this.pollTimeout = setTimeout(() => {
+      this.pollUpdates();
+    }, 500);
+  }
+
   private notify() {
     this.listeners.forEach((fn) => fn());
   }
@@ -91,14 +97,70 @@ class ChatService {
 
   async connect(userId: number) {
     this.currentUserId = userId;
-    await this.updatePresence(true);
-    this.pollUpdates(); // Initial poll
+    
+    // Conectar WebSocket (usa tu variable de entorno o fallback a localhost)
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:9000';
+    this.socket = io(apiUrl);
+
+    this.socket.on('connect', () => {
+      this.socket?.emit('join_chat', userId);
+      this.updatePresence(true);
+      this.pollUpdates(); // Cargar estado inicial y conteo de no leídos
+    });
+
+    this.socket.on('receive_message', (message: ChatMessage) => {
+      this.handleIncomingMessage(message);
+    });
+
+    this.socket.on('user_status_change', (data: { userId: number, online: boolean }) => {
+      const updatedUsers = [...this._snapshot.users];
+      const userIndex = updatedUsers.findIndex(u => u.id === data.userId);
+      if (userIndex !== -1) {
+        updatedUsers[userIndex] = { ...updatedUsers[userIndex], online: data.online };
+        this._snapshot = { ...this._snapshot, users: updatedUsers };
+        this.notify();
+      }
+    });
+
+    // Escuchar cuando el otro usuario lee mis mensajes
+    this.socket.on('messages_read_by_user', (data: { read_by: number }) => {
+      const cached = this._convSnapshots.get(data.read_by);
+      if (cached) {
+        const updated = cached.map(m => ({ ...m, read_status: true }));
+        this._convSnapshots.set(data.read_by, updated);
+        this.notify();
+      }
+    });
+  }
+
+  private handleIncomingMessage(message: ChatMessage) {
+    if (!this.currentUserId) return;
+    
+    // Identificar a la contraparte de la conversación (ya sea si enviamos o recibimos)
+    const otherUserId = message.from_user_id === this.currentUserId 
+      ? message.to_user_id 
+      : message.from_user_id;
+
+    // Si la conversación ya está cargada en memoria, adjuntamos el mensaje
+    if (this._convSnapshots.has(otherUserId)) {
+      const conv = this._convSnapshots.get(otherUserId)!;
+      if (!conv.some(m => m.id === message.id)) {
+        this._convSnapshots.set(otherUserId, [...conv, message]);
+      }
+    }
+
+    // Si recibimos un mensaje de otro usuario, actualizamos el conteo de no leídos
+    if (message.from_user_id !== this.currentUserId) {
+      this.debouncedPollUpdates();
+    }
+    
+    this.notify(); // Notifica a ChatWidget.tsx para re-renderizar
   }
 
   async disconnect() {
-    if (this.pollInterval) {
-      clearInterval(this.pollInterval);
-      this.pollInterval = null;
+    if (this.socket) {
+      this.socket.disconnect();
+      this.socket = null;
     }
     if (this.currentUserId) {
       await this.updatePresence(false);
@@ -120,21 +182,15 @@ class ChatService {
   }
 
   async sendMessage(toUserId: number, text: string) {
-    if (!this.currentUserId) return;
+    if (!this.currentUserId || !this.socket) return;
 
     try {
-      const message = await apiCall('/chat/messages', {
-        method: 'POST',
-        body: JSON.stringify({ to_user_id: toUserId, message_text: text }),
+      // Emitir el evento de mensajería directamente vía WebSockets
+      this.socket.emit('send_message', {
+        from_user_id: this.currentUserId,
+        to_user_id: toUserId,
+        message_text: text
       });
-
-      // Clear conversation cache for this user
-      this._convSnapshots.delete(toUserId);
-
-      // Update snapshots
-      await this.pollUpdates();
-
-      return message;
     } catch (error) {
       console.error('Error sending message:', error);
       throw error;
@@ -149,8 +205,18 @@ class ChatService {
         method: 'PUT',
       });
 
-      // Clear conversation cache
-      this._convSnapshots.delete(fromUserId);
+      // Avisar al otro usuario en tiempo real que leímos sus mensajes
+      this.socket?.emit('messages_read', {
+        from_user_id: fromUserId,
+        to_user_id: this.currentUserId
+      });
+
+      // Actualizar la caché en memoria en lugar de borrarla (evita que desaparezca el chat)
+      const cached = this._convSnapshots.get(fromUserId);
+      if (cached) {
+        const updated = cached.map(m => ({ ...m, read_status: true }));
+        this._convSnapshots.set(fromUserId, updated);
+      }
       this.notify();
     } catch (error) {
       console.error('Error marking as read:', error);

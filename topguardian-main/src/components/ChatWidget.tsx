@@ -75,6 +75,11 @@ const ChatWidget = () => {
 
   if (!isAuthenticated) return null;
 
+  // Mantiene al usuario seleccionado siempre actualizado con los cambios en tiempo real
+  const currentSelectedUser = selectedUser 
+    ? users.find(u => u.id === selectedUser.id) || selectedUser 
+    : null;
+
   return (
     <>
       {/* Floating button */}
@@ -95,9 +100,9 @@ const ChatWidget = () => {
       {/* Chat panel */}
       {open && (
         <div className="fixed bottom-6 right-6 z-50 w-80 sm:w-96 h-[480px] rounded-2xl bg-card border border-border shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom-4 duration-200">
-          {selectedUser ? (
+          {currentSelectedUser ? (
             <ChatConversation
-              otherUser={selectedUser}
+              otherUser={currentSelectedUser}
               onBack={() => setSelectedUser(null)}
               onClose={() => { setOpen(false); setSelectedUser(null); }}
               loadConversation={loadConversation}
