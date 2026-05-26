@@ -1,0 +1,503 @@
+const express = require('express');
+const cors = require('cors');
+const swaggerUi = require('swagger-ui-express');
+const swaggerJsdoc = require('swagger-jsdoc');
+const sqlite3 = require('sqlite3').verbose();
+const path = require('path');
+const fs = require('fs');
+
+const app = express();
+const PORT = process.env.PORT || 9000;
+
+// Middleware
+app.use(cors());
+
+// Custom JSON parser with error handling
+app.use(express.json({
+  verify: (req, res, buf, encoding) => {
+    // This captures the raw body before parsing
+    req.rawBody = buf.toString(encoding);
+  }
+}));
+app.use(express.urlencoded({ extended: true }));
+
+// Database setup
+const dbPath = path.join(__dirname, 'TopGuardian_Api.db');
+const db = new sqlite3.Database(dbPath);
+
+// Initialize database
+const initDatabase = () => {
+  return new Promise((resolve, reject) => {
+    // Create tables
+    const tables = [
+      `CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        username TEXT UNIQUE NOT NULL,
+        email TEXT UNIQUE NOT NULL,
+        role TEXT NOT NULL,
+        phone TEXT,
+        password_hash TEXT NOT NULL,
+        active BOOLEAN DEFAULT 1,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`,
+      `CREATE TABLE IF NOT EXISTS companies (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        ruc TEXT UNIQUE NOT NULL,
+        address TEXT,
+        phone TEXT,
+        email TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`,
+      `CREATE TABLE IF NOT EXISTS employees (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        company_id INTEGER NOT NULL,
+        first_name TEXT NOT NULL,
+        last_name TEXT NOT NULL,
+        document_number TEXT UNIQUE NOT NULL,
+        position TEXT NOT NULL,
+        department TEXT NOT NULL,
+        email TEXT,
+        phone TEXT,
+        active BOOLEAN DEFAULT 1,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (company_id) REFERENCES companies (id)
+      )`,
+      `CREATE TABLE IF NOT EXISTS trainings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        description TEXT,
+        instructor TEXT NOT NULL,
+        date TEXT NOT NULL,
+        duration TEXT NOT NULL,
+        recurrence TEXT DEFAULT 'none',
+        pdf_file_name TEXT,
+        pdf_data BLOB,
+        thumbnail_file_name TEXT,
+        thumbnail_data BLOB,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`,
+      `CREATE TABLE IF NOT EXISTS company_trainings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        company_id INTEGER NOT NULL,
+        training_id INTEGER NOT NULL,
+        assigned_date TEXT NOT NULL,
+        completed_date TEXT,
+        due_date TEXT,
+        recurrence TEXT DEFAULT 'none',
+        FOREIGN KEY (company_id) REFERENCES companies (id),
+        FOREIGN KEY (training_id) REFERENCES trainings (id)
+      )`,
+      `CREATE TABLE IF NOT EXISTS employee_trainings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        employee_id INTEGER NOT NULL,
+        training_id INTEGER NOT NULL,
+        assigned_date TEXT NOT NULL,
+        completed_date TEXT,
+        due_date TEXT,
+        recurrence TEXT DEFAULT 'none',
+        FOREIGN KEY (employee_id) REFERENCES employees (id),
+        FOREIGN KEY (training_id) REFERENCES trainings (id)
+      )`,
+      `CREATE TABLE IF NOT EXISTS planos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        company_id INTEGER NOT NULL,
+        file_name TEXT NOT NULL,
+        file_data BLOB NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (company_id) REFERENCES companies (id)
+      )`,
+      `CREATE TABLE IF NOT EXISTS checklist_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        category TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`,
+      `CREATE TABLE IF NOT EXISTS checklist_visits (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        company_id INTEGER NOT NULL,
+        visit_date TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (company_id) REFERENCES companies (id)
+      )`,
+      `CREATE TABLE IF NOT EXISTS checklist_entries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        visit_id INTEGER NOT NULL,
+        item_id INTEGER NOT NULL,
+        compliant BOOLEAN,
+        observations TEXT,
+        FOREIGN KEY (visit_id) REFERENCES checklist_visits (id),
+        FOREIGN KEY (item_id) REFERENCES checklist_items (id)
+      )`,
+      `CREATE TABLE IF NOT EXISTS risk_matrices (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        company_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        date TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (company_id) REFERENCES companies (id)
+      )`,
+      `CREATE TABLE IF NOT EXISTS risk_matrix_sectors (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        matrix_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        FOREIGN KEY (matrix_id) REFERENCES risk_matrices (id)
+      )`,
+      `CREATE TABLE IF NOT EXISTS risk_matrix_hazards (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        matrix_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        category TEXT NOT NULL,
+        FOREIGN KEY (matrix_id) REFERENCES risk_matrices (id)
+      )`,
+      `CREATE TABLE IF NOT EXISTS risk_matrix_cells (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        matrix_id INTEGER NOT NULL,
+        hazard_id INTEGER NOT NULL,
+        sector_id INTEGER NOT NULL,
+        probability INTEGER NOT NULL,
+        severity INTEGER NOT NULL,
+        risk_score INTEGER NOT NULL,
+        risk_level TEXT NOT NULL,
+        control_measure TEXT,
+        FOREIGN KEY (matrix_id) REFERENCES risk_matrices (id),
+        FOREIGN KEY (hazard_id) REFERENCES risk_matrix_hazards (id),
+        FOREIGN KEY (sector_id) REFERENCES risk_matrix_sectors (id)
+      )`,
+      `CREATE TABLE IF NOT EXISTS chat_messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        from_user_id INTEGER NOT NULL,
+        to_user_id INTEGER NOT NULL,
+        message_text TEXT NOT NULL,
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+        read_status BOOLEAN DEFAULT 0,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (from_user_id) REFERENCES users (id),
+        FOREIGN KEY (to_user_id) REFERENCES users (id)
+      )`,
+      `CREATE TABLE IF NOT EXISTS menus (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        key TEXT NOT NULL,
+        name TEXT NOT NULL,
+        icon TEXT,
+        path TEXT,
+        parent_key TEXT,
+        roles TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`,
+      `CREATE TABLE IF NOT EXISTS roles (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nombre TEXT NOT NULL,
+        fecha_creacion DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`,
+      `CREATE TABLE IF NOT EXISTS user_presence (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        is_online BOOLEAN DEFAULT 0,
+        last_seen DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users (id),
+        UNIQUE(user_id)
+      )`
+    ];
+
+    let completed = 0;
+    const total = tables.length;
+
+    tables.forEach(sql => {
+      db.run(sql, (err) => {
+        if (err) {
+          console.error('Error creating table:', err);
+          reject(err);
+          return;
+        }
+        completed++;
+        if (completed === total) {
+          // All tables created, now insert data
+          insertMockData().then(resolve).catch(reject);
+        }
+      });
+    });
+  });
+};
+
+const insertMockData = async () => {
+  try {
+    // Clear existing data to avoid duplicates
+    const clearTables = async () => {
+      const tablesToClear = ['users', 'companies', 'employees', 'trainings', 'company_trainings', 'employee_trainings', 'planos', 'checklist_items', 'checklist_visits', 'checklist_entries', 'risk_matrices', 'risk_matrix_sectors', 'risk_matrix_hazards', 'risk_matrix_cells', 'chat_messages', 'menus', 'roles'];
+      for (const table of tablesToClear) {
+        await new Promise((resolve, reject) => {
+          db.run(`DELETE FROM ${table}`, (err) => {
+            if (err) reject(err);
+            else resolve();
+          });
+        });
+      }
+
+      await new Promise((resolve, reject) => {
+        db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='sqlite_sequence'", (err, row) => {
+          if (err) reject(err);
+          else if (row) {
+            db.run('DELETE FROM sqlite_sequence', (innerErr) => {
+              if (innerErr) reject(innerErr);
+              else resolve();
+            });
+          } else {
+            resolve();
+          }
+        });
+      });
+    };
+
+    await clearTables();
+
+    // Insert initial user
+    const bcrypt = require('bcryptjs');
+    const hashedPassword = bcrypt.hashSync('123', 10);
+
+    await new Promise((resolve, reject) => {
+      db.run(`
+        INSERT INTO users (name, username, email, role, phone, password_hash)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `, ['Sebastian Sandoval', 'ssandoval', 'ssandoval@test.com', 'Administrador', '1158803733', hashedPassword], function(err) {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+
+    console.log('Initial user created');
+
+    // Insert mock data
+    // Companies
+    const companies = [
+      ['Acme Corp', '20100001234', 'Av. Principal 123', '01-2345678', 'info@acme.com'],
+      ['Globex SA', '20200005678', 'Calle Secundaria 456', '01-8765432', 'contacto@globex.com'],
+      ['Initech SRL', '20300009012', 'Jr. Tercera 789', '01-1122334', 'admin@initech.com'],
+      ['Umbrella Corp', '20400003456', 'Av. Ciencia 321', '01-5566778', 'info@umbrella.com'],
+      ['Wayne Enterprises', '20500007890', 'Gotham Blvd 100', '01-9900112', 'bruce@wayne.com'],
+      ['Stark Industries', '20600001122', 'Malibu Point 10880', '01-3344556', 'tony@stark.com'],
+      ['Cyberdyne Systems', '20700003344', 'Tech Park 200', '01-7788990', 'info@cyberdyne.com'],
+      ['Oscorp', '20800005566', 'New York 5th Ave', '01-1234000', 'norman@oscorp.com']
+    ];
+
+    for (const company of companies) {
+      await new Promise((resolve, reject) => {
+        db.run('INSERT INTO companies (name, ruc, address, phone, email) VALUES (?, ?, ?, ?, ?)', company, function(err) {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+    }
+
+    // Users
+    const users = [
+      ['Carlos García', 'cgarcia', 'carlos@acme.com', 'Administrador', '01-1111111'],
+      ['María López', 'mlopez', 'maria@acme.com', 'Editor', '01-2222222'],
+      ['Juan Pérez', 'jperez', 'juan@acme.com', 'Visualizador', '01-3333333']
+    ];
+
+    for (const user of users) {
+      const hashed = bcrypt.hashSync('123', 10);
+      await new Promise((resolve, reject) => {
+        db.run('INSERT INTO users (name, username, email, role, phone, password_hash) VALUES (?, ?, ?, ?, ?, ?)',
+          [...user, hashed], function(err) {
+            if (err) reject(err);
+            else resolve();
+          });
+      });
+    }
+
+    // Employees
+    const employees = [
+      [1, 'Juan', 'Pérez', '12345678', 'Gerente', 'Administración', 'juan@acme.com', '999111222'],
+      [1, 'María', 'López', '23456789', 'Analista', 'Finanzas', 'maria@acme.com', '999333444'],
+      [2, 'Ana', 'Martínez', '45678901', 'Directora', 'Operaciones', 'ana@globex.com', '999777888']
+    ];
+
+    for (const emp of employees) {
+      await new Promise((resolve, reject) => {
+        db.run('INSERT INTO employees (company_id, first_name, last_name, document_number, position, department, email, phone) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', emp, function(err) {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+    }
+
+    // Trainings
+    const trainings = [
+      ['Seguridad e Higiene', 'Capacitación obligatoria de seguridad laboral', 'María López', '2025-03-15', '4 horas', 'yearly'],
+      ['Primeros Auxilios', 'Curso básico de primeros auxilios', 'Dr. Juan Pérez', '2025-04-10', '8 horas', 'yearly'],
+      ['Manejo de Extintores', 'Uso correcto de extintores', 'Carlos Ruiz', '2025-05-20', '2 horas', 'monthly']
+    ];
+
+    for (const training of trainings) {
+      await new Promise((resolve, reject) => {
+        db.run('INSERT INTO trainings (title, description, instructor, date, duration, recurrence) VALUES (?, ?, ?, ?, ?, ?)', training, function(err) {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+    }
+
+    // Checklist items
+    const checklistItems = [
+      ['Extintores en buen estado', 'Seguridad'],
+      ['Señalización de emergencia visible', 'Seguridad'],
+      ['Salidas de emergencia despejadas', 'Seguridad'],
+      ['EPP disponible y en condiciones', 'EPP']
+    ];
+
+    for (const item of checklistItems) {
+      await new Promise((resolve, reject) => {
+        db.run('INSERT INTO checklist_items (name, category) VALUES (?, ?)', item, function(err) {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+    }
+
+    // Menus
+    const menuData = [
+      { key: 'dash', name: 'Dashboard', icon: 'LayoutDashboard', path: '/dashboard', parent_key: null, roles: 'Administrador,Editor,Visualizador' },
+      { key: 'risk-matrix', name: 'Matriz de Riesgo', icon: 'Shield', path: '/dashboard/risk-matrix', parent_key: null, roles: 'Administrador,Editor,Visualizador' },
+      { key: 'planos', name: 'Planos', icon: 'Map', path: '/dashboard/planos', parent_key: null, roles: 'Administrador,Editor,Visualizador' },
+      { key: 'checklist-visits', name: 'Check Lista Visitas', icon: 'ClipboardCheck', path: '/dashboard/checklist-visits', parent_key: null, roles: 'Administrador,Editor,Visualizador' },
+      { key: 'reports', name: 'Reportes', icon: 'BarChart3', path: '/dashboard/reports', parent_key: null, roles: 'Administrador,Editor,Visualizador' },
+      { key: 'sales', name: 'Ventas', icon: 'ShoppingCart', path: '/dashboard/sales', parent_key: null, roles: 'Administrador,Editor,Visualizador' },
+      { key: 'docs', name: 'Documentos', icon: 'FileText', path: '/dashboard/docs', parent_key: null, roles: 'Administrador,Editor,Visualizador' },
+      { key: 'settings', name: 'Configuración', icon: 'Settings', path: '', parent_key: null, roles: 'Administrador,Editor,Visualizador' },
+      { key: 'companies', name: 'Empresas', icon: 'Building2', path: '/dashboard/companies', parent_key: 'settings', roles: 'Administrador,Editor,Visualizador' },
+      { key: 'users', name: 'Usuarios', icon: 'Users', path: '/dashboard/users', parent_key: 'settings', roles: 'Administrador' },
+      { key: 'menu', name: 'menu', icon: 'ClipboardList', path: '/dashboard/menu', parent_key: 'settings', roles: 'Administrador,Editor,Visualizador' },
+      { key: 'trainings', name: 'Capacitaciones', icon: 'GraduationCap', path: '/dashboard/trainings', parent_key: 'settings', roles: 'Administrador,Editor,Visualizador' },
+      { key: 'checklist-items', name: 'Items Check List', icon: 'ClipboardList', path: '/dashboard/checklist-items', parent_key: 'settings', roles: 'Administrador,Editor,Visualizador' }
+    ];
+
+    for (const menu of menuData) {
+      await new Promise((resolve, reject) => {
+        db.run('INSERT INTO menus (key, name, icon, path, parent_key, roles) VALUES (?, ?, ?, ?, ?, ?)', 
+          [menu.key, menu.name, menu.icon, menu.path, menu.parent_key, menu.roles], function(err) {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+    }
+
+    // Roles
+    const roleNames = ['Administrador', 'Visualizador', 'Editor'];
+    for (const nombre of roleNames) {
+      await new Promise((resolve, reject) => {
+        db.run('INSERT INTO roles (nombre) VALUES (?)', [nombre], function(err) {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+    }
+
+    console.log('Mock data inserted successfully');
+  } catch (err) {
+    console.error('Error inserting mock data:', err);
+  }
+};
+
+// Swagger setup
+const swaggerOptions = {
+  definition: {
+    openapi: '3.0.0',
+    info: {
+      title: 'TopGuardian API',
+      version: '1.0.0',
+      description: 'API for safety management system',
+    },
+    servers: [
+      {
+        url: `http://localhost:${PORT}`,
+        description: 'Development server',
+      },
+    ],
+    components: {
+      securitySchemes: {
+        bearerAuth: {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT',
+        },
+      },
+    },
+    security: [
+      {
+        bearerAuth: [],
+      },
+    ],
+  },
+  apis: ['./routes/*.js', './server.js'],
+};
+
+const swaggerSpec = swaggerJsdoc(swaggerOptions);
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+
+// Routes
+const authRoutes = require('./routes/auth');
+const companyRoutes = require('./routes/companies');
+const userRoutes = require('./routes/users');
+const employeeRoutes = require('./routes/employees');
+const trainingRoutes = require('./routes/trainings');
+const planoRoutes = require('./routes/planos');
+const checklistRoutes = require('./routes/checklists');
+const riskMatrixRoutes = require('./routes/riskMatrices');
+const menuRoutes = require('./routes/menu');
+const chatRoutes = require('./routes/chat');
+const rolesRoutes = require('./routes/roles');
+
+app.use('/auth', authRoutes);
+app.use('/companies', companyRoutes);
+app.use('/users', userRoutes);
+app.use('/employees', employeeRoutes);
+app.use('/trainings', trainingRoutes);
+app.use('/planos', planoRoutes);
+app.use('/checklists', checklistRoutes);
+app.use('/risk-matrices', riskMatrixRoutes);
+app.use('/menu', menuRoutes);
+app.use('/chat', chatRoutes);
+app.use('/roles', rolesRoutes);
+
+// Health check
+app.get('/health', (req, res) => {
+  res.json({ status: 'OK', timestamp: new Date().toISOString() });
+});
+
+// Error handling
+app.use((err, req, res, next) => {
+  // Handle JSON parsing errors
+  if (err instanceof SyntaxError && err.status === 400) {
+    console.error('JSON Parsing Error:');
+    console.error('  Method:', req.method);
+    console.error('  URL:', req.url);
+    console.error('  Content-Type:', req.get('content-type'));
+    console.error('  Raw Body:', req.rawBody);
+    console.error('  Error:', err.message);
+    return res.status(400).json({ 
+      error: 'Invalid JSON in request body',
+      details: err.message,
+      receivedBody: req.rawBody
+    });
+  }
+  
+  console.error('Error:', err.stack);
+  res.status(500).json({ error: 'Something went wrong!' });
+});
+
+// Start server
+initDatabase().then(() => {
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+    console.log(`API docs available at http://localhost:${PORT}/api-docs`);
+  });
+}).catch(err => {
+  console.error('Failed to initialize database:', err);
+  process.exit(1);
+});
+
+module.exports = app;
