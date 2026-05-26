@@ -4,8 +4,8 @@
   "description": "API for TopGuardian safety management system",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js",
+    "start": "set NODE_ENV=production&& node server.js",
+    "dev": "set NODE_ENV=development&& nodemon server.js",
     "test": "jest"
   },
   "dependencies": {

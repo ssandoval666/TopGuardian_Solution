@@ -229,8 +229,14 @@ const initDatabase = () => {
         }
         completed++;
         if (completed === total) {
-          // All tables created, now insert data
-          insertMockData().then(resolve).catch(reject);
+          // Solo insertamos los datos falsos y borramos las tablas si estamos en modo desarrollo
+          if (process.env.NODE_ENV === 'development') {
+            console.log('Entorno de desarrollo detectado. Insertando datos de prueba...');
+            insertMockData().then(resolve).catch(reject);
+          } else {
+            console.log('Entorno de producción. Se omiten los datos de prueba y se conservan los datos reales.');
+            resolve();
+          }
         }
       });
     });

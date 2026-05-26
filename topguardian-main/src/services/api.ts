@@ -3,7 +3,7 @@
 import { tokenService } from "./tokenService";
 
 // Base API URL
-const API_BASE_URL = 'http://localhost:9000';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:9000';
 
 // Headers with JWT
 const authHeaders = () => {

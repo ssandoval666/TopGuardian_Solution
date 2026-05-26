@@ -4,7 +4,7 @@ import { tokenService } from "./tokenService";
 import { addMonths, addYears, parseISO, format, differenceInDays } from "date-fns";
 
 // Base API URL
-const API_BASE_URL = 'http://localhost:9000';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:9000';
 
 // Generic API call function
 const apiCall = async (endpoint: string, options: RequestInit = {}): Promise<any> => {
