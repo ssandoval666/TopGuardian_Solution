@@ -24,6 +24,8 @@ export const apiService = {
       id: data.employee.id,
       username: data.employee.firstName + ' ' + data.employee.lastName,
       companyId: data.employee.companyId,
+      documentNumber: documentNumber,
+      ruc: ruc,
       token: data.accessToken,
       refreshToken: '', 
     };
@@ -33,8 +35,8 @@ export const apiService = {
     return null;
   },
 
-  getCapacitaciones: async (companyId: string, token: string): Promise<CapacitacionesResponse> => {
-    const response = await fetch(`${API_BASE_URL}/trainings/company/${companyId}`, {
+  getCapacitaciones: async (employeeId: string, token: string): Promise<CapacitacionesResponse> => {
+    const response = await fetch(`${API_BASE_URL}/trainings/employee-app/${employeeId}`, {
       headers: { 'Authorization': `Bearer ${token}` }
     });
     if (!response.ok) throw new Error('Error al obtener capacitaciones');
@@ -50,6 +52,7 @@ export const apiService = {
         return {
           codigo: String(t.training_id || t.trainingId),
           nombre: t.training_title || t.trainingTitle,
+          status: t.status,
           thumbnail: thumbUrl,
           pdf: ''
         };
@@ -65,8 +68,13 @@ export const apiService = {
     return response.json();
   },
 
-  registrarCapacitacion: async (data: RegistroCapacitacion): Promise<boolean> => {
-    console.log("Registrando capacitación en la API (Firma, Score):", data);
+  registrarCapacitacion: async (data: any): Promise<boolean> => {
+    const response = await fetch(`${API_BASE_URL}/trainings/employee/record`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${data.token}` },
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) throw new Error('Error al registrar la capacitación');
     return true;
   },
 };

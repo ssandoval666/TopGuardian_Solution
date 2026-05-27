@@ -758,4 +758,119 @@ router.delete('/employee/:id', authenticateToken, async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /trainings/employee/record:
+ *   post:
+ *     summary: Register completed training by employee
+ *     tags: [Employee Trainings]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       201:
+ *         description: Training recorded successfully
+ */
+router.post('/employee/record', authenticateToken, async (req, res) => {
+  try {
+    const { ruc, documentNumber, trainingId, score, signatureData, completionDate } = req.body;
+
+    // 1. Validar Empresa y Empleado
+    const company = await db.getAsync('SELECT id FROM companies WHERE ruc = ?', [ruc]);
+    if (!company) return res.status(404).json({ error: 'Empresa no encontrada' });
+
+    const employee = await db.getAsync('SELECT id FROM employees WHERE document_number = ? AND company_id = ?', [documentNumber, company.id]);
+    if (!employee) return res.status(404).json({ error: 'Empleado no encontrado' });
+
+    // 2. Insertar historial de la evaluación con la firma
+    const sigBuffer = getBuffer(signatureData);
+    await db.runAsync(
+      'INSERT INTO employee_training_records (employee_id, training_id, completion_date, score, signature_data) VALUES (?, ?, ?, ?, ?)',
+      [employee.id, trainingId, completionDate, score, sigBuffer]
+    );
+
+    // 3. Marcar como completado en la asignación principal y calcular próximo vencimiento
+    const assignment = await db.getAsync('SELECT * FROM employee_trainings WHERE employee_id = ? AND training_id = ?', [employee.id, trainingId]);
+    if (assignment) {
+      let dueDate = null;
+      if (assignment.recurrence !== 'none') {
+        const completed = new Date(completionDate);
+        if (assignment.recurrence === 'monthly') {
+          completed.setMonth(completed.getMonth() + 1);
+        } else if (assignment.recurrence === 'yearly') {
+          completed.setFullYear(completed.getFullYear() + 1);
+        }
+        dueDate = completed.toISOString().split('T')[0];
+      }
+
+      await db.runAsync(
+        'UPDATE employee_trainings SET completed_date = ?, due_date = ? WHERE id = ?',
+        [completionDate, dueDate, assignment.id]
+      );
+    }
+
+    res.status(201).json({ success: true });
+  } catch (err) {
+    console.error('Error registrando capacitación:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * @swagger
+ * /trainings/employee-app/{employeeId}:
+ *   get:
+ *     summary: Get trainings for employee app (company + employee specific)
+ *     tags: [Employee Trainings]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: employeeId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Employee app trainings
+ */
+router.get('/employee-app/:employeeId', authenticateToken, async (req, res) => {
+  try {
+    const { employeeId } = req.params;
+    const employee = await db.getAsync('SELECT company_id FROM employees WHERE id = ?', [employeeId]);
+    if (!employee) return res.status(404).json({ error: 'Empleado no encontrado' });
+
+    // 1. Obtener capacitaciones de la empresa
+    const companyTrainings = await db.allAsync(`
+      SELECT ct.id as assignment_id, ct.training_id, t.title as training_title, t.thumbnail_data, ct.assigned_date
+      FROM company_trainings ct JOIN trainings t ON ct.training_id = t.id WHERE ct.company_id = ?
+    `, [employee.company_id]);
+
+    // 2. Obtener capacitaciones individuales
+    const empTrainings = await db.allAsync(`
+      SELECT et.id as assignment_id, et.training_id, t.title as training_title, t.thumbnail_data, et.assigned_date
+      FROM employee_trainings et JOIN trainings t ON et.training_id = t.id WHERE et.employee_id = ?
+    `, [employeeId]);
+
+    // 3. Fusionar evitando duplicados
+    const map = new Map();
+    companyTrainings.forEach(t => map.set(t.training_id, t));
+    empTrainings.forEach(t => map.set(t.training_id, t));
+    
+    const result = [];
+    for (const t of Array.from(map.values())) {
+      const record = await db.getAsync('SELECT * FROM employee_training_records WHERE employee_id = ? AND training_id = ? ORDER BY created_at DESC LIMIT 1', [employeeId, t.training_id]);
+      result.push({ ...t, status: record ? 'completed' : 'pending', thumbnailData: t.thumbnail_data ? Array.from(t.thumbnail_data) : [] });
+    }
+    
+    result.sort((a, b) => {
+      if (a.status === 'completed' && b.status !== 'completed') return 1;
+      if (a.status !== 'completed' && b.status === 'completed') return -1;
+      return new Date(b.assigned_date) - new Date(a.assigned_date);
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

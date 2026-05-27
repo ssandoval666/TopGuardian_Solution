@@ -29,8 +29,9 @@ const CapacitacionDetailPage: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const capacitacion = (location.state as { capacitacion?: Capacitacion })?.capacitacion;
+  const isCompleted = (capacitacion as any)?.status === "completed";
 
-  const [currentStep, setCurrentStep] = useState(0);
+  const [currentStep, setCurrentStep] = useState(isCompleted ? 1 : 0);
   const [signatureData, setSignatureData] = useState<string | null>(null);
   const [respuestas, setRespuestas] = useState<Record<string, number>>({});
   const [cuestionario, setCuestionario] = useState<PreguntaCuestionario[]>([]);
@@ -143,23 +144,40 @@ const CapacitacionDetailPage: React.FC = () => {
         return;
       }
       setQuizError("");
-      setCurrentStep(3);
-    } else if (currentStep === 3) {
-      // Submit
+      
+      // Auto-Submit al aprobar el cuestionario
       if (!user || !codigo || submitted) return;
       setSubmitting(true);
-      await apiService.registrarCapacitacion({
-        token: user.token,
-        codigoCapacitacion: codigo,
-        codigoUsuario: user.id,
-        porcentajeAprobacion: porcentaje,
-      });
-      setSubmitted(true);
-      setSubmitting(false);
+      try {
+        let byteArray: number[] = [];
+        if (signatureData) {
+          const base64Data = signatureData.split(',')[1];
+          const binaryStr = atob(base64Data);
+          byteArray = new Array(binaryStr.length);
+          for (let i = 0; i < binaryStr.length; i++) byteArray[i] = binaryStr.charCodeAt(i);
+        }
+        
+        await apiService.registrarCapacitacion({
+          ruc: (user as any).ruc,
+          documentNumber: (user as any).documentNumber,
+          trainingId: codigo,
+          score: pct, // Enviamos el porcentaje real validado en este instante
+          signatureData: byteArray,
+          completionDate: new Date().toISOString().split('T')[0],
+          token: user.token
+        });
+        setSubmitted(true);
+        setCurrentStep(3);
+      } catch (err) {
+        console.error("Error al registrar", err);
+        setQuizError("Ocurrió un error al guardar los resultados. Intente nuevamente.");
+      } finally {
+        setSubmitting(false);
+      }
     } else {
       setCurrentStep((s) => s + 1);
     }
-  }, [currentStep, cuestionario, respuestas, user, codigo, porcentaje, submitted]);
+  }, [currentStep, cuestionario, respuestas, user, codigo, submitted, signatureData, fullTraining]);
 
   const canAdvance = () => {
     if (currentStep === 0) return !!signatureData;
@@ -192,26 +210,35 @@ const CapacitacionDetailPage: React.FC = () => {
         </div>
       </div>
 
+      {isCompleted && (
+        <div className="bg-green-500/10 border border-green-500/20 text-green-700 dark:text-green-400 p-4 rounded-lg mb-6 flex items-center gap-3">
+          <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
+          <p className="text-sm font-medium">Esta capacitación ya fue realizada. Puede repasar el material de lectura.</p>
+        </div>
+      )}
+
       {/* Steps indicator */}
-      <div className="flex items-center gap-2 mb-8">
-        {STEPS.map((step, i) => (
-          <React.Fragment key={i}>
-            <div
-              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all ${
-                i === currentStep
-                  ? "bg-primary/10 text-primary border border-primary/20"
-                  : i < currentStep
-                  ? "bg-success/10 text-success"
-                  : "text-muted-foreground"
-              }`}
-            >
-              <step.icon className="w-4 h-4" />
-              <span className="hidden sm:inline">{step.label}</span>
-            </div>
-            {i < STEPS.length - 1 && <div className={`flex-1 h-px ${i < currentStep ? "bg-success" : "bg-border"}`} />}
-          </React.Fragment>
-        ))}
-      </div>
+      {!isCompleted && (
+        <div className="flex items-center gap-2 mb-8">
+          {STEPS.map((step, i) => (
+            <React.Fragment key={i}>
+              <div
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all ${
+                  i === currentStep
+                    ? "bg-primary/10 text-primary border border-primary/20"
+                    : i < currentStep
+                    ? "bg-success/10 text-success"
+                    : "text-muted-foreground"
+                }`}
+              >
+                <step.icon className="w-4 h-4" />
+                <span className="hidden sm:inline">{step.label}</span>
+              </div>
+              {i < STEPS.length - 1 && <div className={`flex-1 h-px ${i < currentStep ? "bg-success" : "bg-border"}`} />}
+            </React.Fragment>
+          ))}
+        </div>
+      )}
 
       {/* Step content */}
       <AnimatePresence mode="wait">
@@ -319,39 +346,24 @@ const CapacitacionDetailPage: React.FC = () => {
           {/* Step 3: Completed */}
           {currentStep === 3 && (
             <div className="text-center py-8">
-              {!submitted ? (
-                <>
-                  <CheckCircle2 className="w-16 h-16 text-success mx-auto mb-4" />
-                  <h2 className="text-xl font-bold text-foreground mb-2">¡Capacitación Aprobada!</h2>
-                  <p className="text-muted-foreground mb-2">
-                    Ha completado exitosamente: <span className="text-foreground font-medium">{capacitacion.nombre}</span>
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    Porcentaje de aprobación: <span className="text-success font-semibold">{porcentaje}%</span>
-                  </p>
-                </>
-              ) : (
-                <>
-                  <CheckCircle2 className="w-16 h-16 text-success mx-auto mb-4" />
-                  <h2 className="text-xl font-bold text-foreground mb-2">¡Registro Exitoso!</h2>
-                  <p className="text-muted-foreground mb-6">
-                    La capacitación ha sido registrada correctamente.
-                  </p>
-                  <button
-                    onClick={() => navigate("/capacitaciones")}
-                    className="px-6 py-3 rounded-lg bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition-all"
-                  >
-                    Volver a Capacitaciones
-                  </button>
-                </>
-              )}
+              <CheckCircle2 className="w-16 h-16 text-success mx-auto mb-4" />
+              <h2 className="text-xl font-bold text-foreground mb-2">¡Registro Exitoso!</h2>
+              <p className="text-muted-foreground mb-6">
+                La capacitación ha sido registrada correctamente con un {porcentaje}% de aprobación.
+              </p>
+              <button
+                onClick={() => navigate("/capacitaciones")}
+                className="px-6 py-3 rounded-lg bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition-all"
+              >
+                Volver a Capacitaciones
+              </button>
             </div>
           )}
         </motion.div>
       </AnimatePresence>
 
       {/* Navigation buttons */}
-      {!(currentStep === 3 && submitted) && (
+      {!isCompleted && currentStep < 3 && (
         <div className="flex justify-between mt-6">
           <button
             onClick={() => currentStep > 0 && currentStep < 3 && setCurrentStep((s) => s - 1)}
@@ -370,10 +382,8 @@ const CapacitacionDetailPage: React.FC = () => {
           >
             {submitting ? (
               <>
-                <Loader2 className="w-4 h-4 animate-spin" /> Registrando...
+                <Loader2 className="w-4 h-4 animate-spin" /> Evaluando...
               </>
-            ) : currentStep === 3 ? (
-              "Registrar Capacitación"
             ) : (
               <>
                 Siguiente <ChevronRight className="w-4 h-4" />

@@ -17,8 +17,7 @@ const CapacitacionesPage: React.FC = () => {
     if (!user) return;
     setLoading(true);
     try {
-      // user.companyId estará disponible gracias a nuestro mapeo del login
-      const res = await apiService.getCapacitaciones((user as any).companyId || user.id, user.token);
+      const res = await apiService.getCapacitaciones(user.id, user.token);
       setCapacitaciones(res.capacitaciones);
     } catch (err) {
       console.error(err);
@@ -107,9 +106,14 @@ const CapacitacionesPage: React.FC = () => {
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ delay: idx * 0.1 }}
                 onClick={() => handleSelect(cap)}
-                className="glass-card rounded-xl overflow-hidden cursor-pointer group hover:border-primary/30 transition-all duration-300"
+                className="glass-card rounded-xl overflow-hidden relative cursor-pointer group hover:border-primary/30 transition-all duration-300"
               >
-                <div className="aspect-[4/3] overflow-hidden bg-muted flex items-center justify-center">
+                {(cap as any).status === 'completed' && (
+                  <div className="absolute top-0 left-0 w-full bg-green-500/95 backdrop-blur-sm text-white text-[11px] font-bold text-center py-1.5 z-10 uppercase tracking-widest shadow-md">
+                    Realizada
+                  </div>
+                )}
+                <div className="aspect-[4/3] overflow-hidden bg-muted flex items-center justify-center relative">
                   {cap.thumbnail ? (
                     <img src={cap.thumbnail.startsWith('blob:') ? cap.thumbnail : `data:image/svg+xml;base64,${cap.thumbnail}`} alt={cap.nombre} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                   ) : (
