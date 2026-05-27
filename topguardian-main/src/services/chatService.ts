@@ -31,6 +31,11 @@ class ChatService {
   private unreadByUser: Record<number, number> = {};
   private socket: Socket | null = null;
   private pollTimeout: ReturnType<typeof setTimeout> | null = null;
+  private forceLogoutCallback?: () => void;
+
+  onForceLogout(callback?: () => void) {
+    this.forceLogoutCallback = callback;
+  }
 
   constructor() {}
 
@@ -110,6 +115,13 @@ class ChatService {
 
     this.socket.on('receive_message', (message: ChatMessage) => {
       this.handleIncomingMessage(message);
+    });
+
+    // Escuchar el evento de cierre de sesión forzado desde otra ubicación
+    this.socket.on('force_logout', () => {
+      if (this.forceLogoutCallback) {
+        this.forceLogoutCallback();
+      }
     });
 
     this.socket.on('user_status_change', (data: { userId: number, online: boolean }) => {

@@ -556,6 +556,8 @@ app.use((err, req, res, next) => {
 // =========================================
 // Configuración de WebSockets (Socket.io)
 // =========================================
+const activeUserSockets = new Map(); // Mapa para rastrear la conexión principal de cada usuario
+
 io.on('connection', (socket) => {
   let currentUserId = null;
 
@@ -563,7 +565,11 @@ io.on('connection', (socket) => {
 
   // El usuario se une a una sala personal utilizando su ID para recibir mensajes privados
   socket.on('join_chat', (userId) => {
+    // Forzar el cierre de sesión en otras ubicaciones/pestañas del mismo usuario
+    socket.to(userId.toString()).emit('force_logout');
+
     currentUserId = userId;
+        activeUserSockets.set(userId, socket.id); // Actualizamos cuál es el socket activo actual
     socket.join(userId.toString());
     console.log(`[WebSocket] Usuario ${socket.id} asociado a userId: ${userId}`);
 
@@ -638,17 +644,19 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     console.log(`[WebSocket] Usuario desconectado: ${socket.id}`);
-    if (currentUserId) {
+    // Solo apagamos el estado 'Online' si el socket que se desconecta es el último válido
+    if (currentUserId && activeUserSockets.get(currentUserId) === socket.id) {
+      activeUserSockets.delete(currentUserId);
       // Marcar usuario como desconectado
       const sql = `UPDATE user_presence SET is_online = 0, last_seen = CURRENT_TIMESTAMP WHERE user_id = ?`;
-          db.run(sql, [currentUserId], () => {
-            io.emit('user_status_change', { userId: currentUserId, online: false });
-            
-            // Emitir el conteo total de usuarios online
-            db.get('SELECT COUNT(*) as count FROM user_presence WHERE is_online = 1', (err, row) => {
-              if (!err && row) io.emit('online_count_update', row.count);
-            });
-          });
+      db.run(sql, [currentUserId], () => {
+        io.emit('user_status_change', { userId: currentUserId, online: false });
+        
+        // Emitir el conteo total de usuarios online
+        db.get('SELECT COUNT(*) as count FROM user_presence WHERE is_online = 1', (err, row) => {
+          if (!err && row) io.emit('online_count_update', row.count);
+        });
+      });
     }
   });
 });

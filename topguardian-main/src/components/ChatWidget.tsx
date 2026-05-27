@@ -3,6 +3,7 @@ import { chatService, type ChatUser, type ChatMessage } from "@/services/chatSer
 import { useAuth } from "@/contexts/AuthContext";
 import { MessageCircle, X, Send, ArrowLeft, Smile } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 
 // Simple emoji list
 const EMOJI_LIST = ["😀","😂","😍","👍","❤️","🔥","🎉","👋","😊","🤔","😎","💪","✅","⭐","🚀","💬","📌","🙏","😢","😡"];
@@ -57,19 +58,25 @@ const useChatState = () => {
 };
 
 const ChatWidget = () => {
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, logout } = useAuth();
   const [open, setOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<ChatUser | null>(null);
 
   // Connect/disconnect on auth changes
   useEffect(() => {
     if (isAuthenticated && user) {
+      chatService.onForceLogout(() => {
+        chatService.disconnect();
+        logout();
+        toast.error("Sesión finalizada: Se detectó un acceso desde otra ubicación o pestaña.", { duration: 6000 });
+      });
       chatService.connect(parseInt(user.id));
       return () => {
+        chatService.onForceLogout(undefined);
         chatService.disconnect();
       };
     }
-  }, [isAuthenticated, user]);
+  }, [isAuthenticated, user, logout]);
 
   const { users, totalUnread, loadConversation, markAsRead } = useChatState();
 
