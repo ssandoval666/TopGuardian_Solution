@@ -63,12 +63,12 @@ const CapacitacionDetailPage: React.FC = () => {
         // Generate PDF preview
         if (data.pdfData && data.pdfData.length > 0) {
           const blob = new Blob([new Uint8Array(data.pdfData)], { type: "application/pdf" });
-          const url = URL.createObjectURL(blob);
+          const url = URL.createObjectURL(blob) + "#toolbar=0&navpanes=0";
           setPdfUrl(url);
         }
       }).catch(err => console.error(err));
     }
-    return () => { if (pdfUrl) URL.revokeObjectURL(pdfUrl); };
+    return () => { if (pdfUrl) URL.revokeObjectURL(pdfUrl.split('#')[0]); };
   }, [codigo, user]);
 
   // Canvas setup

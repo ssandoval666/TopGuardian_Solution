@@ -364,7 +364,7 @@ router.get('/company/:companyId', authenticateToken, async (req, res) => {
   try {
     const { companyId } = req.params;
     const trainings = await db.allAsync(`
-      SELECT ct.*, t.title as training_title, t.description, t.instructor, t.date, t.duration, t.recurrence as training_recurrence,
+      SELECT ct.*, t.title as training_title, t.description, t.instructor, t.date, t.duration, t.recurrence as training_recurrence, t.thumbnail_data,
              c.name as company_name
       FROM company_trainings ct
       JOIN trainings t ON ct.training_id = t.id
@@ -391,7 +391,11 @@ router.get('/company/:companyId', authenticateToken, async (req, res) => {
           }
         }
       }
-      return { ...training, status };
+      return { 
+        ...training, 
+        status,
+        thumbnailData: training.thumbnail_data ? Array.from(training.thumbnail_data) : [] 
+      };
     });
 
     res.json(trainingsWithStatus);

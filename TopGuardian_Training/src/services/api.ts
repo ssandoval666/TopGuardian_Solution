@@ -41,12 +41,19 @@ export const apiService = {
     const data = await response.json();
     
     return {
-      capacitaciones: data.map((t: any) => ({
-        codigo: String(t.training_id || t.trainingId),
-        nombre: t.training_title || t.trainingTitle,
-        thumbnail: '', // Se carga el real en el detalle si es necesario o un ícono por defecto
-        pdf: ''
-      }))
+      capacitaciones: data.map((t: any) => {
+        let thumbUrl = '';
+        if (t.thumbnailData && t.thumbnailData.length > 0) {
+          const blob = new Blob([new Uint8Array(t.thumbnailData)]);
+          thumbUrl = URL.createObjectURL(blob);
+        }
+        return {
+          codigo: String(t.training_id || t.trainingId),
+          nombre: t.training_title || t.trainingTitle,
+          thumbnail: thumbUrl,
+          pdf: ''
+        };
+      })
     };
   },
 

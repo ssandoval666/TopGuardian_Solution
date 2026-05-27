@@ -111,7 +111,7 @@ const CapacitacionesPage: React.FC = () => {
               >
                 <div className="aspect-[4/3] overflow-hidden bg-muted flex items-center justify-center">
                   {cap.thumbnail ? (
-                    <img src={`data:image/svg+xml;base64,${cap.thumbnail}`} alt={cap.nombre} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                    <img src={cap.thumbnail.startsWith('blob:') ? cap.thumbnail : `data:image/svg+xml;base64,${cap.thumbnail}`} alt={cap.nombre} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                   ) : (
                     <BookOpen className="w-16 h-16 text-muted-foreground/30 group-hover:scale-110 transition-transform duration-500" />
                   )}
