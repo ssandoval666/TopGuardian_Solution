@@ -18,6 +18,9 @@ const io = new Server(server, {
 });
 const PORT = process.env.PORT || 9000;
 
+// Exponer socket.io a las rutas
+app.set('io', io);
+
 // Middleware
 app.use(cors());
 
@@ -420,7 +423,8 @@ const insertMockData = async () => {
       { key: 'menu', name: 'menu', icon: 'ClipboardList', path: '/dashboard/menu', parent_key: 'settings', roles: 'Administrador,Editor,Visualizador' },
       { key: 'trainings', name: 'Capacitaciones', icon: 'GraduationCap', path: '/dashboard/trainings', parent_key: 'settings', roles: 'Administrador,Editor,Visualizador' },
       { key: 'checklist-items', name: 'Items Check List', icon: 'ClipboardList', path: '/dashboard/checklist-items', parent_key: 'settings', roles: 'Administrador,Editor,Visualizador' },
-      { key: 'registro-capacitaciones', name: 'Registro de Capacitaciones', icon: 'FileText', path: '/dashboard/registro-capacitaciones', parent_key: null, roles: 'Administrador,Editor,Visualizador' }
+      { key: 'registro-capacitaciones', name: 'Registro de Capacitaciones', icon: 'FileText', path: '/dashboard/registro-capacitaciones', parent_key: null, roles: 'Administrador,Editor,Visualizador' },
+      { key: 'sesiones-activas', name: 'Sesiones Activas', icon: 'ShieldAlert', path: '/dashboard/sesiones-activas', parent_key: null, roles: 'Administrador' }
     ];
 
     for (const menu of menuData) {

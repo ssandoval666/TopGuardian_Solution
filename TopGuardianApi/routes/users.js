@@ -246,4 +246,30 @@ router.delete('/:id', authenticateToken, async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /users/{id}/force-logout:
+ *   post:
+ *     summary: Force logout a user
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ */
+router.post('/:id/force-logout', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const io = req.app.get('io');
+    if (io) io.to(id.toString()).emit('force_logout');
+    res.json({ success: true, message: 'Orden de desconexión enviada' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

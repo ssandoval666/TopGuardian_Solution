@@ -101,3 +101,9 @@ export const apiDeleteUser = async (id: string): Promise<void> => {
     method: 'DELETE',
   });
 };
+
+export const apiForceLogoutUser = async (id: string): Promise<void> => {
+  return apiCall(`/users/${id}/force-logout`, {
+    method: 'POST',
+  });
+};
