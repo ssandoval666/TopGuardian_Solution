@@ -16,6 +16,7 @@ import ChecklistVisitsPage from "./pages/ChecklistVisitsPage";
 import ChecklistItemsPage from "./pages/ChecklistItemsPage";
 import CalendarPage from "./pages/CalendarPage";
 import MenuPage from "./pages/MenuPage";
+import RegistroCapacitacionesPage from "./pages/RegistroCapacitacionesPage";
 import DashboardLayout from "./components/DashboardLayout";
 import ProtectedRoute from "./components/ProtectedRoute";
 import NotFound from "./pages/NotFound";
@@ -55,6 +56,7 @@ const App = () => (
                 <Route path="checklist-visits" element={<ChecklistVisitsPage />} />
                 <Route path="checklist-items" element={<ChecklistItemsPage />} />
                 <Route path="calendario" element={<CalendarPage />} />
+                <Route path="registro-capacitaciones" element={<RegistroCapacitacionesPage />} />
               </Route>
               <Route path="*" element={<NotFound />} />
             </Routes>

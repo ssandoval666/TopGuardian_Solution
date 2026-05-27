@@ -419,7 +419,8 @@ const insertMockData = async () => {
       { key: 'users', name: 'Usuarios', icon: 'Users', path: '/dashboard/users', parent_key: 'settings', roles: 'Administrador' },
       { key: 'menu', name: 'menu', icon: 'ClipboardList', path: '/dashboard/menu', parent_key: 'settings', roles: 'Administrador,Editor,Visualizador' },
       { key: 'trainings', name: 'Capacitaciones', icon: 'GraduationCap', path: '/dashboard/trainings', parent_key: 'settings', roles: 'Administrador,Editor,Visualizador' },
-      { key: 'checklist-items', name: 'Items Check List', icon: 'ClipboardList', path: '/dashboard/checklist-items', parent_key: 'settings', roles: 'Administrador,Editor,Visualizador' }
+      { key: 'checklist-items', name: 'Items Check List', icon: 'ClipboardList', path: '/dashboard/checklist-items', parent_key: 'settings', roles: 'Administrador,Editor,Visualizador' },
+      { key: 'registro-capacitaciones', name: 'Registro de Capacitaciones', icon: 'FileText', path: '/dashboard/registro-capacitaciones', parent_key: null, roles: 'Administrador,Editor,Visualizador' }
     ];
 
     for (const menu of menuData) {

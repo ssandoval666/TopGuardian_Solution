@@ -25,6 +25,9 @@ router.get('/', async (req, res) => {
   const { userId } = req.query;
 
   try {
+    // Migración automática para asegurar el orden exacto (Drag and Drop)
+    try { await db.runAsync('ALTER TABLE menus ADD COLUMN order_index INTEGER DEFAULT 0'); } catch(e) {}
+
     // Get user role
     const user = await db.getAsync('SELECT role FROM users WHERE id = ?', [userId]);
     if (!user) {
@@ -33,7 +36,7 @@ router.get('/', async (req, res) => {
     const userRole = user.role.toLowerCase();
 
     // Get menus for role
-    const menus = await db.allAsync('SELECT id, key, name, icon, path, parent_key FROM menus WHERE roles LIKE ?', [`%${userRole}%`]);
+    const menus = await db.allAsync('SELECT id, key, name, icon, path, parent_key FROM menus WHERE roles LIKE ? ORDER BY order_index ASC, id ASC', [`%${userRole}%`]);
 
     // Build hierarchy
     const menuMap = {};
@@ -82,7 +85,10 @@ router.get('/', async (req, res) => {
  */
 router.get('/all', async (req, res) => {
   try {
-    const menus = await db.allAsync('SELECT id, key, name, icon, path, parent_key, roles FROM menus ORDER BY id');
+    // Migración automática para asegurar el orden exacto (Drag and Drop)
+    try { await db.runAsync('ALTER TABLE menus ADD COLUMN order_index INTEGER DEFAULT 0'); } catch(e) {}
+
+    const menus = await db.allAsync('SELECT id, key, name, icon, path, parent_key, roles FROM menus ORDER BY order_index ASC, id ASC');
 
     // Build hierarchy
     const menuMap = {};
@@ -186,6 +192,55 @@ router.post('/', async (req, res) => {
     res.status(201).json(response);
   } catch (err) {
     console.error('Error creating menu item:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * @swagger
+ * /menu/structure:
+ *   put:
+ *     summary: Update menu structure (Drag and Drop ordering)
+ *     tags: [Menu]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               items:
+ *                 type: array
+ *     responses:
+ *       200:
+ *         description: Structure updated
+ */
+router.put('/structure', authenticateToken, async (req, res) => {
+  try {
+    const { items } = req.body;
+    if (!items || !Array.isArray(items)) return res.status(400).json({ error: 'Items array is required' });
+    try { await db.runAsync('ALTER TABLE menus ADD COLUMN order_index INTEGER DEFAULT 0'); } catch(e) {}
+
+    const updates = [];
+    const flatten = (nodes, parentId = null) => {
+      nodes.forEach((node, index) => {
+        updates.push({ id: node.id, parentId, orderIndex: index });
+        if (node.children && node.children.length > 0) flatten(node.children, node.id);
+      });
+    };
+    flatten(items);
+
+    for (const update of updates) {
+      await db.runAsync(
+        'UPDATE menus SET parent_key = ?, order_index = ? WHERE key = ?',
+        [update.parentId, update.orderIndex, update.id]
+      );
+    }
+    res.json({ success: true, message: 'Structure updated' });
+  } catch (err) {
+    console.error('Error updating menu structure:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

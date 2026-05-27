@@ -78,6 +78,34 @@ export interface TrainingListResponse {
   pageSize: number;
 }
 
+export interface TrainingRecordReport {
+  id: string;
+  completionDate: string;
+  trainingTitle: string;
+  signatureData: number[];
+}
+
+export interface EmployeeReport {
+  id: string;
+  firstName: string;
+  lastName: string;
+  documentNumber: string;
+  records: TrainingRecordReport[];
+}
+
+export interface AssignedTrainingMinimal {
+  title: string;
+  date: string;
+}
+
+export interface CompanyReport {
+  id: string;
+  name: string;
+  totalTrainings: number;
+  assignedTrainings: AssignedTrainingMinimal[];
+  employees: EmployeeReport[];
+}
+
 // Helper para mapear la respuesta del backend (snake_case y Buffer) a React
 const mapTraining = (t: any): Training => {
   const parseBuffer = (rawData: any) => {
@@ -110,6 +138,10 @@ export const apiFetchTrainingList = async (params: TrainingListParams): Promise<
     res.data = res.data.map(mapTraining);
   }
   return res;
+};
+
+export const apiFetchTrainingRecordsReport = async (): Promise<CompanyReport[]> => {
+  return apiCall('/trainings/reports/registros');
 };
 
 export const apiGetTrainingQuestionnaire = async (id: string): Promise<TrainingQuestionnaire> => {

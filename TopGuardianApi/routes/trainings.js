@@ -205,6 +205,75 @@ router.put('/:id', authenticateToken, async (req, res) => {
 
 /**
  * @swagger
+ * /trainings/reports/registros:
+ *   get:
+ *     summary: Get training records report grouped by company and employee
+ *     tags: [Trainings]
+ *     security:
+ *       - bearerAuth: []
+ */
+router.get('/reports/registros', authenticateToken, async (req, res) => {
+  try {
+    const rows = await db.allAsync(`
+      SELECT 
+        c.id AS company_id, 
+        c.name AS company_name,
+        e.id AS employee_id, 
+        e.first_name, 
+        e.last_name, 
+        e.document_number,
+        (SELECT JSON_GROUP_ARRAY(JSON_OBJECT('title', t_sub.title, 'date', ct.assigned_date)) 
+         FROM company_trainings ct 
+         JOIN trainings t_sub ON ct.training_id = t_sub.id 
+         WHERE ct.company_id = c.id
+        ) AS company_trainings_list,
+        etr.id AS record_id, 
+        etr.completion_date, 
+        etr.signature_data,
+        t.title AS training_title
+      FROM companies c
+      JOIN employees e ON e.company_id = c.id AND e.active = 1
+      LEFT JOIN employee_training_records etr ON etr.employee_id = e.id
+      LEFT JOIN trainings t ON etr.training_id = t.id
+      ORDER BY c.name, e.last_name, e.first_name, etr.completion_date DESC
+    `);
+
+    const companiesMap = new Map();
+    rows.forEach(row => {
+      if (!companiesMap.has(row.company_id)) {
+        let assignedTrainings = [];
+        if (row.company_trainings_list) {
+          try {
+            assignedTrainings = JSON.parse(row.company_trainings_list).filter(t => t.title != null);
+          } catch (e) {}
+        }
+        companiesMap.set(row.company_id, { 
+          id: String(row.company_id), name: row.company_name, totalTrainings: assignedTrainings.length, assignedTrainings, employees: new Map() 
+        });
+      }
+      const company = companiesMap.get(row.company_id);
+      
+      if (!company.employees.has(row.employee_id)) {
+        company.employees.set(row.employee_id, { id: String(row.employee_id), firstName: row.first_name, lastName: row.last_name, documentNumber: row.document_number, records: [] });
+      }
+      const employee = company.employees.get(row.employee_id);
+      
+      if (row.record_id) {
+        employee.records.push({ id: String(row.record_id), completionDate: row.completion_date, trainingTitle: row.training_title, signatureData: row.signature_data ? Array.from(row.signature_data) : [] });
+      }
+    });
+
+    const result = Array.from(companiesMap.values()).map(c => ({
+      ...c, employees: Array.from(c.employees.values())
+    }));
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * @swagger
  * /trainings/{id}:
  *   delete:
  *     summary: Delete training

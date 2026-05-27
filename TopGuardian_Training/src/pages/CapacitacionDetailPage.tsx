@@ -80,9 +80,7 @@ const CapacitacionDetailPage: React.FC = () => {
     if (!ctx) return;
     canvas.width = canvas.offsetWidth;
     canvas.height = canvas.offsetHeight;
-    ctx.fillStyle = "hsl(220, 18%, 14%)";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.strokeStyle = "hsl(210, 70%, 50%)";
+    ctx.strokeStyle = "#000000"; // Tinta negra sin fondo
     ctx.lineWidth = 2;
     ctx.lineCap = "round";
   }, [currentStep]);
@@ -126,8 +124,7 @@ const CapacitacionDetailPage: React.FC = () => {
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    ctx.fillStyle = "hsl(220, 18%, 14%)";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.clearRect(0, 0, canvas.width, canvas.height); // Limpiar dejando transparente
     setSignatureData(null);
   };
 
@@ -260,7 +257,7 @@ const CapacitacionDetailPage: React.FC = () => {
               <div className="relative border border-border rounded-lg overflow-hidden">
                 <canvas
                   ref={canvasRef}
-                  className="w-full h-48 cursor-crosshair touch-none"
+                  className="w-full h-48 cursor-crosshair touch-none bg-white"
                   onMouseDown={startDraw}
                   onMouseMove={draw}
                   onMouseUp={endDraw}

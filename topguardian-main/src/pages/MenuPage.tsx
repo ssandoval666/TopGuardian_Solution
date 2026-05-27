@@ -67,6 +67,14 @@ interface MenuNodeProps {
   onAddChild: (parentId: string) => void;
   expandedNodes: Set<string>;
   onToggleExpand: (id: string) => void;
+  // Props de Drag & Drop
+  draggedId: string | null;
+  dropTargetId: string | null;
+  dropPosition: 'BEFORE' | 'AFTER' | 'INSIDE' | null;
+  onDragStart: (e: React.DragEvent, id: string) => void;
+  onDragOver: (e: React.DragEvent, id: string) => void;
+  onDrop: (e: React.DragEvent, id: string) => void;
+  onDragEnd: () => void;
 }
 
 const MenuNode: React.FC<MenuNodeProps> = ({
@@ -77,17 +85,34 @@ const MenuNode: React.FC<MenuNodeProps> = ({
   onAddChild,
   expandedNodes,
   onToggleExpand,
+  draggedId,
+  dropTargetId,
+  dropPosition,
+  onDragStart,
+  onDragOver,
+  onDrop,
+  onDragEnd,
 }) => {
   const hasChildren = item.children && item.children.length > 0;
   const isExpanded = expandedNodes.has(item.id);
   const IconComponent = availableIcons.find(icon => icon.name === item.icon)?.icon || LayoutDashboard;
 
+  const isDropTarget = dropTargetId === item.id;
+  const isDragging = draggedId === item.id;
+
   return (
-    <div className="select-none">
+    <div className={`select-none ${isDragging ? 'opacity-50' : ''}`}>
+      {isDropTarget && dropPosition === 'BEFORE' && <div className="h-1 w-full bg-primary rounded-full mb-1" />}
+
       <div
-        className={`flex items-center gap-2 p-2 rounded-md hover:bg-muted/50 transition-colors ${
-          level > 0 ? "ml-6" : ""
-        }`}
+        draggable
+        onDragStart={(e) => onDragStart(e, item.id)}
+        onDragOver={(e) => onDragOver(e, item.id)}
+        onDrop={(e) => onDrop(e, item.id)}
+        onDragEnd={onDragEnd}
+        className={`flex items-center gap-2 p-2 rounded-md transition-colors ${
+          isDropTarget && dropPosition === 'INSIDE' ? 'ring-2 ring-primary bg-primary/10' : 'hover:bg-muted/50'
+        } ${level > 0 ? "ml-6" : ""}`}
         style={{ paddingLeft: `${level * 24 + 8}px` }}
       >
         {/* Expand/collapse button */}
@@ -105,8 +130,10 @@ const MenuNode: React.FC<MenuNodeProps> = ({
         )}
         {!hasChildren && <div className="w-6" />}
 
-        {/* Drag handle */}
-        <GripVertical className="h-4 w-4 text-muted-foreground cursor-move" />
+        {/* Drag Handle */}
+        <div className="cursor-move p-1 text-muted-foreground hover:text-foreground">
+          <GripVertical className="h-4 w-4" />
+        </div>
 
         {/* Icon */}
         <IconComponent className="h-4 w-4 flex-shrink-0" />
@@ -167,6 +194,8 @@ const MenuNode: React.FC<MenuNodeProps> = ({
         </div>
       </div>
 
+      {isDropTarget && dropPosition === 'AFTER' && <div className="h-1 w-full bg-primary rounded-full mt-1" />}
+
       {/* Children */}
       {hasChildren && isExpanded && (
         <div>
@@ -180,6 +209,13 @@ const MenuNode: React.FC<MenuNodeProps> = ({
               onAddChild={onAddChild}
               expandedNodes={expandedNodes}
               onToggleExpand={onToggleExpand}
+              draggedId={draggedId}
+              dropTargetId={dropTargetId}
+              dropPosition={dropPosition}
+              onDragStart={onDragStart}
+              onDragOver={onDragOver}
+              onDrop={onDrop}
+              onDragEnd={onDragEnd}
             />
           ))}
         </div>
@@ -206,6 +242,11 @@ const MenuPage = () => {
   const [isDeleting, setIsDeleting] = useState(false);
   const [availableRoles, setAvailableRoles] = useState<string[]>([]);
   const [isLoadingRoles, setIsLoadingRoles] = useState(false);
+
+  // Drag and drop states
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
+  const [dropPosition, setDropPosition] = useState<'BEFORE' | 'AFTER' | 'INSIDE' | null>(null);
 
   const loadRoles = useCallback(async () => {
     setIsLoadingRoles(true);
@@ -261,6 +302,120 @@ const MenuPage = () => {
       }
       return newSet;
     });
+  };
+
+  // --- Drag and Drop Handlers ---
+  const handleDragStart = (e: React.DragEvent, id: string) => {
+    e.stopPropagation();
+    setDraggedId(id);
+  };
+
+  const handleDragOver = (e: React.DragEvent, id: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (draggedId === id) return;
+
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    const height = rect.height;
+
+    let position: 'BEFORE' | 'AFTER' | 'INSIDE' = 'INSIDE';
+    if (y < height * 0.25) position = 'BEFORE';
+    else if (y > height * 0.75) position = 'AFTER';
+
+    setDropTargetId(id);
+    setDropPosition(position);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedId(null);
+    setDropTargetId(null);
+    setDropPosition(null);
+  };
+
+  const handleDrop = async (e: React.DragEvent, id: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (draggedId && dropTargetId && dropPosition) {
+      await performDrop(draggedId, dropTargetId, dropPosition);
+    }
+    handleDragEnd();
+  };
+
+  const performDrop = async (dragId: string, targetId: string, position: 'BEFORE' | 'AFTER' | 'INSIDE') => {
+    if (dragId === targetId) return;
+    const clone = JSON.parse(JSON.stringify(menuItems)) as MenuItemRaw[];
+
+    const isDescendant = (node: MenuItemRaw, searchId: string): boolean => {
+      if (!node.children) return false;
+      if (node.children.some(c => c.id === searchId)) return true;
+      return node.children.some(c => isDescendant(c, searchId));
+    };
+
+    let targetNodeRef: MenuItemRaw | null = null;
+    const findTarget = (items: MenuItemRaw[]) => {
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].id === targetId) targetNodeRef = items[i];
+        if (items[i].children) findTarget(items[i].children);
+      }
+    };
+    findTarget(clone);
+
+    if (targetNodeRef && isDescendant(targetNodeRef, dragId)) {
+      toast.error("No puedes anidar un menú dentro de su propio hijo");
+      return;
+    }
+
+    let draggedNode: MenuItemRaw | null = null;
+    const removeNode = (items: MenuItemRaw[]) => {
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].id === dragId) {
+          draggedNode = items.splice(i, 1)[0];
+          return true;
+        }
+        if (items[i].children && removeNode(items[i].children)) return true;
+      }
+      return false;
+    };
+
+    removeNode(clone);
+    if (!draggedNode) return;
+
+    const insertNode = (items: MenuItemRaw[]): boolean => {
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].id === targetId) {
+          if (position === 'BEFORE') {
+            items.splice(i, 0, draggedNode!);
+          } else if (position === 'AFTER') {
+            items.splice(i + 1, 0, draggedNode!);
+          } else if (position === 'INSIDE') {
+            if (!items[i].children) items[i].children = [];
+            items[i].children.push(draggedNode!);
+          }
+          return true;
+        }
+        if (items[i].children && insertNode(items[i].children)) return true;
+      }
+      return false;
+    };
+
+    insertNode(clone);
+    setMenuItems(clone);
+
+    if (position === 'INSIDE') {
+      setExpandedNodes(prev => new Set(prev).add(targetId));
+    }
+
+    setIsSaving(true);
+    try {
+      await apiUpdateMenuStructure(clone);
+      toast.success("Orden actualizado correctamente");
+      await refreshMenu();
+    } catch (error) {
+      toast.error("Error al guardar la estructura");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleAddChild = (parentId: string) => {
@@ -401,15 +556,17 @@ const MenuPage = () => {
             Gestiona la estructura del menú, permisos y navegación
           </p>
         </div>
-        <Button onClick={() => {
-          setParentId(null);
-          setEditingItem(null);
-          setForm(emptyForm);
-          setDialogOpen(true);
-        }}>
-          <Plus className="h-4 w-4 mr-2" />
-          Nuevo Item Raíz
-        </Button>
+        <div className="flex gap-2">
+          <Button onClick={() => {
+            setParentId(null);
+            setEditingItem(null);
+            setForm(emptyForm);
+            setDialogOpen(true);
+          }}>
+            <Plus className="h-4 w-4 mr-2" />
+            Nuevo Item Raíz
+          </Button>
+        </div>
       </div>
 
       <Card>
@@ -437,6 +594,13 @@ const MenuPage = () => {
                   onAddChild={handleAddChild}
                   expandedNodes={expandedNodes}
                   onToggleExpand={handleToggleExpand}
+                  draggedId={draggedId}
+                  dropTargetId={dropTargetId}
+                  dropPosition={dropPosition}
+                  onDragStart={handleDragStart}
+                  onDragOver={handleDragOver}
+                  onDrop={handleDrop}
+                  onDragEnd={handleDragEnd}
                 />
               ))}
             </div>
