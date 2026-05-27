@@ -26,7 +26,7 @@ type Listener = () => void;
 class ChatService {
   private currentUserId: number | null = null;
   private listeners: Set<Listener> = new Set();
-  private _snapshot: { users: ChatUser[]; totalUnread: number } = { users: [], totalUnread: 0 };
+  private _snapshot: { users: ChatUser[]; totalUnread: number; onlineCount: number; trainingOnlineCount: number } = { users: [], totalUnread: 0, onlineCount: 0, trainingOnlineCount: 0 };
   private _convSnapshots: Map<number, ChatMessage[]> = new Map();
   private unreadByUser: Record<number, number> = {};
   private socket: Socket | null = null;
@@ -68,6 +68,8 @@ class ChatService {
         this._snapshot = {
           users: filteredUsers,
           totalUnread: newTotalUnread,
+          onlineCount: this._snapshot.onlineCount,
+          trainingOnlineCount: this._snapshot.trainingOnlineCount,
         };
         this.notify();
       }
@@ -118,6 +120,18 @@ class ChatService {
         this._snapshot = { ...this._snapshot, users: updatedUsers };
         this.notify();
       }
+    });
+
+    // Escuchar el contador total de usuarios en línea emitido por el backend
+    this.socket.on('online_count_update', (count: number) => {
+      this._snapshot = { ...this._snapshot, onlineCount: count };
+      this.notify();
+    });
+
+    // Escuchar el contador de empleados conectados a la app de Training
+    this.socket.on('training_online_count_update', (count: number) => {
+      this._snapshot = { ...this._snapshot, trainingOnlineCount: count };
+      this.notify();
     });
 
     // Escuchar cuando el otro usuario lee mis mensajes
@@ -271,6 +285,14 @@ class ChatService {
 
   getTotalUnread(): number {
     return this._snapshot.totalUnread;
+  }
+
+  getOnlineCount(): number {
+    return this._snapshot.onlineCount;
+  }
+
+  getTrainingOnlineCount(): number {
+    return this._snapshot.trainingOnlineCount;
   }
 
   getCurrentUserId() {

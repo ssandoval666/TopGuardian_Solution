@@ -573,6 +573,15 @@ io.on('connection', (socket) => {
     db.run(sql, [userId], () => {
       io.emit('user_status_change', { userId, online: true });
       
+      // Emitir el conteo total de usuarios online
+      db.get('SELECT COUNT(*) as count FROM user_presence WHERE is_online = 1', (err, row) => {
+        if (!err && row) io.emit('online_count_update', row.count);
+      });
+
+      // Emitir también el conteo de operarios en capacitación al administrador que se acaba de conectar
+      const trainingCount = io.sockets.adapter.rooms.get('training_app_users')?.size || 0;
+      socket.emit('training_online_count_update', trainingCount);
+
       // Enviar mensajes offline pendientes al usuario automáticamente al conectarse
       const unreadSql = 'SELECT * FROM chat_messages WHERE to_user_id = ? AND read_status = 0';
       db.all(unreadSql, [userId], (err, rows) => {
@@ -606,10 +615,25 @@ io.on('connection', (socket) => {
     });
   });
 
+  // Escuchar a los operarios de la app de Training
+  socket.on('join_training', () => {
+    socket.join('training_app_users');
+    const count = io.sockets.adapter.rooms.get('training_app_users')?.size || 0;
+    io.emit('training_online_count_update', count);
+  });
+
   // Escuchar cuando un usuario avisa que ha leído los mensajes
   socket.on('messages_read', (data) => {
     const { from_user_id, to_user_id } = data;
     io.to(from_user_id.toString()).emit('messages_read_by_user', { read_by: to_user_id });
+  });
+
+  // Detectar antes de que se desconecte para saber si saldrá de la app de Training
+  socket.on('disconnecting', () => {
+    if (socket.rooms.has('training_app_users')) {
+      const count = Math.max(0, (io.sockets.adapter.rooms.get('training_app_users')?.size || 1) - 1);
+      io.emit('training_online_count_update', count);
+    }
   });
 
   socket.on('disconnect', () => {
@@ -617,7 +641,14 @@ io.on('connection', (socket) => {
     if (currentUserId) {
       // Marcar usuario como desconectado
       const sql = `UPDATE user_presence SET is_online = 0, last_seen = CURRENT_TIMESTAMP WHERE user_id = ?`;
-      db.run(sql, [currentUserId], () => io.emit('user_status_change', { userId: currentUserId, online: false }));
+          db.run(sql, [currentUserId], () => {
+            io.emit('user_status_change', { userId: currentUserId, online: false });
+            
+            // Emitir el conteo total de usuarios online
+            db.get('SELECT COUNT(*) as count FROM user_presence WHERE is_online = 1', (err, row) => {
+              if (!err && row) io.emit('online_count_update', row.count);
+            });
+          });
     }
   });
 });

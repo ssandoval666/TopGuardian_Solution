@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
 import { User } from "@/types";
 import { apiService, SESSION_TIMEOUT_MS } from "@/services/api";
+import { io, Socket } from "socket.io-client";
 
 interface AuthContextType {
   user: User | null;
@@ -27,6 +28,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const refreshIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const activityRef = useRef<number>(Date.now());
+  const socketRef = useRef<Socket | null>(null);
 
   const logout = useCallback(() => {
     setUser(null);
@@ -93,6 +95,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (refreshIntervalRef.current) clearInterval(refreshIntervalRef.current);
     };
   }, [user, resetSessionTimeout, startTokenRefresh]);
+
+  // WebSocket para reportar presencia en tiempo real
+  useEffect(() => {
+    if (user) {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:9000';
+      socketRef.current = io(apiUrl);
+      socketRef.current.on('connect', () => {
+        socketRef.current?.emit('join_training');
+      });
+    } else {
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
+    }
+    return () => {
+      if (socketRef.current) socketRef.current.disconnect();
+    };
+  }, [user]);
 
   return (
     <AuthContext.Provider value={{ user, isAuthenticated: !!user, isLoading, login, logout }}>

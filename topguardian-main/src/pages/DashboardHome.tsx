@@ -1,15 +1,9 @@
 import { useState, useEffect } from "react";
-import { BarChart3, Users, TrendingUp, Activity } from "lucide-react";
+import { BarChart3, Users, Activity, GraduationCap } from "lucide-react";
 import { useApp } from "@/contexts/AppContext";
 import { apiFetchCompanyTrainingStats, type CompanyTraining } from "@/services/companyTrainingApi";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
-
-const stats = [
-  { label: "Usuarios activos", value: "2,451", icon: Users, change: "+12%" },
-  { label: "Ingresos", value: "$45,231", icon: TrendingUp, change: "+8.2%" },
-  { label: "Reportes", value: "142", icon: BarChart3, change: "+3.1%" },
-  { label: "Sesiones hoy", value: "1,024", icon: Activity, change: "+18%" },
-];
+import { chatService } from "@/services/chatService";
 
 const COLORS = ["hsl(var(--primary))", "hsl(var(--destructive))"];
 
@@ -20,6 +14,8 @@ const DashboardHome = () => {
   const [pendingList, setPendingList] = useState<CompanyTraining[]>([]);
   const [showPendingList, setShowPendingList] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [activeUsers, setActiveUsers] = useState(0);
+  const [trainingUsers, setTrainingUsers] = useState(0);
 
   useEffect(() => {
     if (!selectedCompany) return;
@@ -31,6 +27,26 @@ const DashboardHome = () => {
       setPendingList(res.pendingList);
     }).finally(() => setIsLoading(false));
   }, [selectedCompany]);
+
+  // Suscripción al WebSocket para el contador de usuarios en línea
+  useEffect(() => {
+    const handleUpdate = () => {
+      setActiveUsers(chatService.getOnlineCount());
+      setTrainingUsers(chatService.getTrainingOnlineCount());
+    };
+
+    const unsubscribe = chatService.subscribe(handleUpdate);
+    handleUpdate(); // Seteo inicial
+
+    return unsubscribe;
+  }, []);
+
+  const dynamicStats = [
+    { label: "Administradores", value: activeUsers.toString(), icon: Users, change: "En línea" },
+    { label: "Operarios (Training)", value: trainingUsers.toString(), icon: GraduationCap, change: "Conectados ahora" },
+    { label: "Reportes", value: "142", icon: BarChart3, change: "+3.1%" },
+    { label: "Sesiones hoy", value: "1,024", icon: Activity, change: "+18%" },
+  ];
 
   const pieData = [
     { name: "Cumplidas", value: completed },
@@ -55,7 +71,7 @@ const DashboardHome = () => {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {stats.map((stat) => (
+        {dynamicStats.map((stat) => (
           <div
             key={stat.label}
             className="rounded-lg border border-border bg-card p-5 shadow-sm hover:shadow-md transition-shadow"
