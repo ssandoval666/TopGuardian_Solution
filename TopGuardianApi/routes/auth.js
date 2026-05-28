@@ -3,9 +3,17 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const router = express.Router();
 const db = require('../database');
+const rateLimit = require('express-rate-limit');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-for-dev-only-change-it';
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'your-refresh-secret-key-for-dev';
+
+// Límite de peticiones para rutas de Login (Prevención de ataques de Fuerza Bruta)
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  max: 10, // Límite de 10 intentos por IP
+  message: { error: 'Demasiados intentos de inicio de sesión. Por favor, espere 15 minutos.' }
+});
 
 /**
  * @swagger
@@ -46,7 +54,7 @@ const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'your-refresh-secre
  *       401:
  *         description: Invalid credentials
  */
-router.post('/login', (req, res) => {
+router.post('/login', loginLimiter, (req, res) => {
   const { username, password } = req.body;
 
   db.get('SELECT * FROM users WHERE username = ? AND active = 1', [username], (err, user) => {
@@ -156,7 +164,7 @@ router.post('/refresh', (req, res) => {
  *               documentNumber:
  *                 type: string
  */
-router.post('/training-login', async (req, res) => {
+router.post('/training-login', loginLimiter, async (req, res) => {
   try {
     const { ruc, documentNumber } = req.body;
 

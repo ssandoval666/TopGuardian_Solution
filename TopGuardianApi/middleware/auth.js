@@ -20,4 +20,17 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
-module.exports = { authenticateToken };
+// Middleware para Control de Acceso Basado en Roles (RBAC)
+const authorizeRole = (allowedRoles) => {
+  return (req, res, next) => {
+    if (!req.user || !req.user.role) {
+      return res.status(403).json({ error: 'Acceso denegado. Rol no definido.' });
+    }
+    if (!allowedRoles.includes(req.user.role)) {
+      return res.status(403).json({ error: 'No tienes los privilegios necesarios para realizar esta acción.' });
+    }
+    next();
+  };
+};
+
+module.exports = { authenticateToken, authorizeRole };

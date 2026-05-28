@@ -10,12 +10,14 @@ const swaggerJsdoc = require('swagger-jsdoc');
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs');
+const compression = require('compression');
+const helmet = require('helmet');
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: "*", // Nota: En producción cambia esto por la URL de tu frontend (ej: 'http://localhost:3000')
+    origin: process.env.CORS_ORIGIN || "*", 
     methods: ["GET", "POST"]
   }
 });
@@ -25,7 +27,9 @@ const PORT = process.env.PORT || 9000;
 app.set('io', io);
 
 // Middleware
-app.use(cors());
+app.use(helmet({ crossOriginResourcePolicy: false })); // Añade cabeceras de seguridad HTTP (XSS, Sniffing, etc.)
+app.use(compression()); // Comprime las respuestas JSON y recorta el consumo de red en un ~80%
+app.use(cors({ origin: process.env.CORS_ORIGIN || "*" }));
 
 // Custom JSON parser with error handling
 app.use(express.json({

@@ -2,7 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const router = express.Router();
 const db = require('../database');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, authorizeRole } = require('../middleware/auth');
 
 /**
  * @swagger
@@ -104,7 +104,7 @@ router.get('/list', authenticateToken, async (req, res) => {
  *       201:
  *         description: User created
  */
-router.post('/', authenticateToken, async (req, res) => {
+router.post('/', authenticateToken, authorizeRole(['Administrador']), async (req, res) => {
   try {
     const { name, username, email, role, phone, password } = req.body;
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -164,7 +164,7 @@ router.post('/', authenticateToken, async (req, res) => {
  *       200:
  *         description: User updated
  */
-router.put('/:id', authenticateToken, async (req, res) => {
+router.put('/:id', authenticateToken, authorizeRole(['Administrador']), async (req, res) => {
   try {
     const { id } = req.params;
     const { name, username, email, role, phone, active, password } = req.body;
@@ -236,7 +236,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
  *       204:
  *         description: User deleted
  */
-router.delete('/:id', authenticateToken, async (req, res) => {
+router.delete('/:id', authenticateToken, authorizeRole(['Administrador']), async (req, res) => {
   try {
     const { id } = req.params;
     await db.runAsync('DELETE FROM users WHERE id = ?', [id]);
@@ -261,7 +261,7 @@ router.delete('/:id', authenticateToken, async (req, res) => {
  *         schema:
  *           type: integer
  */
-router.post('/:id/force-logout', authenticateToken, async (req, res) => {
+router.post('/:id/force-logout', authenticateToken, authorizeRole(['Administrador']), async (req, res) => {
   try {
     const { id } = req.params;
     const io = req.app.get('io');
