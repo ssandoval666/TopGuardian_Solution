@@ -547,6 +547,16 @@ router.post('/company', authenticateToken, authorizeRole(['Administrador', 'Edit
       JOIN companies c ON ct.company_id = c.id
       WHERE ct.id = ?
     `, [result.lastID]);
+
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('company_activity', {
+        companyId: String(companyId),
+        message: `Nueva capacitación asignada: ${assignment.training_title}`,
+        timestamp: new Date().toISOString()
+      });
+    }
+
     res.status(201).json(assignment);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -643,7 +653,26 @@ router.put('/company/:id/complete', authenticateToken, authorizeRole(['Administr
 router.delete('/company/:id', authenticateToken, authorizeRole(['Administrador', 'Editor']), async (req, res) => {
   try {
     const { id } = req.params;
+    const assignment = await db.getAsync(`
+      SELECT ct.company_id, t.title 
+      FROM company_trainings ct 
+      JOIN trainings t ON ct.training_id = t.id 
+      WHERE ct.id = ?
+    `, [id]);
+
     await db.runAsync('DELETE FROM company_trainings WHERE id = ?', [id]);
+
+    if (assignment) {
+      const io = req.app.get('io');
+      if (io) {
+        io.emit('company_activity', {
+          companyId: String(assignment.company_id),
+          message: `Capacitación desasignada: ${assignment.title}`,
+          timestamp: new Date().toISOString()
+        });
+      }
+    }
+
     res.status(204).send();
   } catch (err) {
     res.status(500).json({ error: err.message });

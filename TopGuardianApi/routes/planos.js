@@ -84,6 +84,16 @@ router.post('/', authenticateToken, authorizeRole(['Administrador', 'Editor']), 
     );
 
     const plano = await db.getAsync('SELECT id, name, company_id, file_name, created_at FROM planos WHERE id = ?', [result.lastID]);
+
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('company_activity', {
+        companyId: String(companyId),
+        message: `Nuevo plano cargado: ${name}`,
+        timestamp: new Date().toISOString()
+      });
+    }
+
     res.status(201).json(plano);
   } catch (err) {
     res.status(500).json({ error: err.message });

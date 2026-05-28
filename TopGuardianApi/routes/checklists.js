@@ -279,6 +279,15 @@ router.post('/visits', authenticateToken, async (req, res) => {
       WHERE ce.visit_id = ?
     `, [visitId]);
 
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('company_activity', {
+        companyId: String(companyId),
+        message: `Nuevo Check List registrado para el ${visitDate}`,
+        timestamp: new Date().toISOString()
+      });
+    }
+
     res.status(201).json({
       ...visit,
       entries: visitEntries.map(entry => ({

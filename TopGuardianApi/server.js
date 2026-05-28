@@ -446,6 +446,7 @@ const insertMockData = async () => {
       { key: 'risk-matrix', name: 'Matriz de Riesgo', icon: 'Shield', path: '/dashboard/risk-matrix', parent_key: null, roles: 'Administrador,Editor,Visualizador' },
       { key: 'planos', name: 'Planos', icon: 'Map', path: '/dashboard/planos', parent_key: null, roles: 'Administrador,Editor,Visualizador' },
       { key: 'checklist-visits', name: 'Check Lista Visitas', icon: 'ClipboardCheck', path: '/dashboard/checklist-visits', parent_key: null, roles: 'Administrador,Editor,Visualizador' },
+      { key: 'nomina-empleados', name: 'Nómina de Empleados', icon: 'Users', path: '/dashboard/nomina-empleados', parent_key: null, roles: 'Administrador,Editor,Visualizador' },
       { key: 'registro-capacitaciones', name: 'Registro de Capacitaciones', icon: 'FileText', path: '/dashboard/registro-capacitaciones', parent_key: null, roles: 'Administrador,Editor,Visualizador' },
       { key: 'sesiones-activas', name: 'Sesiones Activas', icon: 'ShieldAlert', path: '/dashboard/sesiones-activas', parent_key: null, roles: 'Administrador' },
       { key: 'settings', name: 'Configuración', icon: 'Settings', path: '', parent_key: null, roles: 'Administrador,Editor,Visualizador' },

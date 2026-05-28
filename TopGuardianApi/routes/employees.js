@@ -125,6 +125,16 @@ router.post('/', authenticateToken, async (req, res) => {
       [companyId, firstName, lastName, documentNumber, position, department, email, phone]
     );
     const employee = await db.getAsync('SELECT * FROM employees WHERE id = ?', [result.lastID]);
+
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('company_activity', {
+        companyId: String(companyId),
+        message: `Nuevo empleado registrado: ${firstName} ${lastName}`,
+        timestamp: new Date().toISOString()
+      });
+    }
+
     res.status(201).json(employee);
   } catch (err) {
     if (err.code === 'SQLITE_CONSTRAINT') {
@@ -227,6 +237,15 @@ router.put('/:id', authenticateToken, async (req, res) => {
     const employee = await db.getAsync('SELECT * FROM employees WHERE id = ?', [id]);
     if (!employee) return res.status(404).json({ error: 'Empleado no encontrado' });
 
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('company_activity', {
+        companyId: String(employee.company_id),
+        message: `Datos actualizados para el empleado: ${employee.first_name} ${employee.last_name}`,
+        timestamp: new Date().toISOString()
+      });
+    }
+
     res.json(employee);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -254,7 +273,20 @@ router.put('/:id', authenticateToken, async (req, res) => {
 router.delete('/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
+    const employee = await db.getAsync('SELECT * FROM employees WHERE id = ?', [id]);
     await db.runAsync('DELETE FROM employees WHERE id = ?', [id]);
+
+    if (employee) {
+      const io = req.app.get('io');
+      if (io) {
+        io.emit('company_activity', {
+          companyId: String(employee.company_id),
+          message: `Empleado eliminado de la nómina: ${employee.first_name} ${employee.last_name}`,
+          timestamp: new Date().toISOString()
+        });
+      }
+    }
+
     res.status(204).send();
   } catch (err) {
     res.status(500).json({ error: err.message });

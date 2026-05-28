@@ -186,6 +186,15 @@ router.put('/:id', authenticateToken, authorizeRole(['Administrador']), async (r
     const company = await db.getAsync('SELECT * FROM companies WHERE id = ?', [id]);
     if (!company) return res.status(404).json({ error: 'Empresa no encontrada' });
 
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('company_activity', {
+        companyId: String(id),
+        message: `Los datos generales de la empresa han sido actualizados`,
+        timestamp: new Date().toISOString()
+      });
+    }
+
     res.json(company);
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -3,6 +3,7 @@ import { Bell, X, Check, AlertTriangle, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { apiFetchCompanyTrainingAlerts, type CompanyTraining } from "@/services/companyTrainingApi";
 import { useApp } from "@/contexts/AppContext";
+import { chatService, type GlobalNotification } from "@/services/chatService";
 
 interface Notification {
   id: string;
@@ -25,20 +26,30 @@ const alertToNotification = (a: CompanyTraining): Notification => ({
 const NotificationPanel = () => {
   const { selectedCompany } = useApp();
   const [open, setOpen] = useState(false);
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [alerts, setAlerts] = useState<Notification[]>([]);
+  const [globalNotifs, setGlobalNotifs] = useState<Notification[]>([]);
 
   useEffect(() => {
     if (!selectedCompany) return;
     apiFetchCompanyTrainingAlerts(selectedCompany.id).then((alerts) => {
       const alertNotifs = alerts.map(alertToNotification);
-      setNotifications(alertNotifs);
+      setAlerts(alertNotifs);
     });
   }, [selectedCompany]);
 
+  useEffect(() => {
+    const unsub = chatService.subscribeToGlobalNotification((notification) => {
+      setGlobalNotifs(prev => [notification as Notification, ...prev]);
+    });
+    return unsub;
+  }, []);
+
+  const notifications = [...globalNotifs, ...alerts];
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   const markAllRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    setAlerts((prev) => prev.map((n) => ({ ...n, read: true })));
+    setGlobalNotifs((prev) => prev.map((n) => ({ ...n, read: true })));
   };
 
   const typeIcon = (type: Notification["type"]) => {

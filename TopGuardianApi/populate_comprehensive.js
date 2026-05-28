@@ -360,6 +360,7 @@ function insertMenu() {
     { key: 'risk-matrix', name: 'Matriz de Riesgo', icon: 'Shield', path: '/dashboard/risk-matrix', parent_key: null, roles: 'admin,manager,supervisor,employee,viewer' },
     { key: 'planos', name: 'Planos', icon: 'Map', path: '/dashboard/planos', parent_key: null, roles: 'admin,manager,supervisor,employee,viewer' },
     { key: 'checklist-visits', name: 'Check Lista Visitas', icon: 'ClipboardCheck', path: '/dashboard/checklist-visits', parent_key: null, roles: 'admin,manager,supervisor,employee,viewer' },
+    { key: 'nomina-empleados', name: 'Nómina de Empleados', icon: 'Users', path: '/dashboard/nomina-empleados', parent_key: null, roles: 'admin,manager,supervisor,employee,viewer' },
     { key: 'settings', name: 'Configuración', icon: 'Settings', path: '', parent_key: null, roles: 'admin,manager' },
 
     // Settings children

@@ -3,7 +3,7 @@ import { BarChart3, Users, Activity, GraduationCap } from "lucide-react";
 import { useApp } from "@/contexts/AppContext";
 import { apiFetchCompanyTrainingStats, type CompanyTraining } from "@/services/companyTrainingApi";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
-import { chatService } from "@/services/chatService";
+import { chatService, type CompanyActivity } from "@/services/chatService";
 
 const COLORS = ["hsl(var(--primary))", "hsl(var(--destructive))"];
 
@@ -16,11 +16,13 @@ const DashboardHome = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [activeUsers, setActiveUsers] = useState(0);
   const [trainingUsers, setTrainingUsers] = useState(0);
+  const [recentActivities, setRecentActivities] = useState<CompanyActivity[]>([]);
 
   useEffect(() => {
     if (!selectedCompany) return;
     setIsLoading(true);
     setShowPendingList(false);
+    setRecentActivities([]); // Limpiar actividad al cambiar de empresa
     apiFetchCompanyTrainingStats(selectedCompany.id).then((res) => {
       setCompleted(res.completed);
       setPending(res.pending);
@@ -40,6 +42,16 @@ const DashboardHome = () => {
 
     return unsubscribe;
   }, []);
+
+  // Suscripción al WebSocket para la Actividad Reciente de la empresa
+  useEffect(() => {
+    const unsub = chatService.subscribeToCompanyActivity((activity) => {
+      if (selectedCompany && String(activity.companyId) === String(selectedCompany.id)) {
+        setRecentActivities(prev => [activity, ...prev].slice(0, 10)); // Mantener las últimas 10
+      }
+    });
+    return unsub;
+  }, [selectedCompany]);
 
   const dynamicStats = [
     { label: "Usuarios Activos", value: activeUsers.toString(), icon: Users, change: "En línea" },
@@ -176,8 +188,22 @@ const DashboardHome = () => {
               </button>
             </div>
           ) : (
-            <div className="flex items-center justify-center h-32 text-muted-foreground text-sm border border-dashed rounded-lg border-border">
-              Próximamente: Historial de actividad general
+            <div className="space-y-3">
+              {recentActivities.length === 0 ? (
+                <div className="flex items-center justify-center h-32 text-muted-foreground text-sm border border-dashed rounded-lg border-border">
+                  No hay actividad reciente en esta sesión
+                </div>
+              ) : (
+                recentActivities.map((act, i) => (
+                  <div key={i} className="flex items-center gap-3 p-3 rounded-md bg-muted/50 animate-fade-in">
+                    <div className="h-2 w-2 rounded-full bg-primary flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-foreground truncate">{act.message}</p>
+                      <p className="text-[10px] text-muted-foreground">{new Date(act.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</p>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           )}
         </div>

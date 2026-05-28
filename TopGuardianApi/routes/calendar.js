@@ -70,6 +70,18 @@ router.post('/', authenticateToken, async (req, res) => {
       [userId, title, date, startTime, endTime, notes || "", completed ? 1 : 0]
     );
 
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('global_notification', {
+        id: `cal-${result.lastID}`,
+        title: "Nueva Cita en Calendario",
+        message: `Se ha agendado: "${title}" para el ${date} a las ${startTime}`,
+        time: "Justo ahora",
+        read: false,
+        type: "info"
+      });
+    }
+
     res.status(201).json({ id: String(result.lastID), title, date, startTime, endTime, notes, completed: Boolean(completed), userId: String(userId) });
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -19,6 +19,7 @@ import MenuPage from "./pages/MenuPage";
 import RegistroCapacitacionesPage from "./pages/RegistroCapacitacionesPage";
 import SesionesActivasPage from "./pages/SesionesActivasPage";
 import PeligroCategoriasPage from "./pages/PeligroCategoriasPage";
+import NominaEmpleadosPage from "./pages/NominaEmpleadosPage";
 import DashboardLayout from "./components/DashboardLayout";
 import ProtectedRoute from "./components/ProtectedRoute";
 import NotFound from "./pages/NotFound";
@@ -61,6 +62,7 @@ const App = () => (
                 <Route path="registro-capacitaciones" element={<RegistroCapacitacionesPage />} />
                 <Route path="sesiones-activas" element={<SesionesActivasPage />} />
                 <Route path="peligro-categorias" element={<PeligroCategoriasPage />} />
+                <Route path="nomina-empleados" element={<NominaEmpleadosPage />} />
               </Route>
               <Route path="*" element={<NotFound />} />
             </Routes>

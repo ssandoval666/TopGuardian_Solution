@@ -21,6 +21,21 @@ export interface ChatMessage {
   read_status: boolean;
 }
 
+export interface CompanyActivity {
+  companyId: string;
+  message: string;
+  timestamp: string;
+}
+
+export interface GlobalNotification {
+  id: string;
+  title: string;
+  message: string;
+  time: string;
+  read: boolean;
+  type: "info" | "warning" | "error";
+}
+
 type Listener = () => void;
 
 class ChatService {
@@ -32,6 +47,8 @@ class ChatService {
   private socket: Socket | null = null;
   private pollTimeout: ReturnType<typeof setTimeout> | null = null;
   private forceLogoutCallback?: () => void;
+  private companyActivityListeners: Set<(activity: CompanyActivity) => void> = new Set();
+  private globalNotificationListeners: Set<(notification: GlobalNotification) => void> = new Set();
 
   onForceLogout(callback?: () => void) {
     this.forceLogoutCallback = callback;
@@ -101,6 +118,16 @@ class ChatService {
     };
   }
 
+  subscribeToCompanyActivity(fn: (activity: CompanyActivity) => void) {
+    this.companyActivityListeners.add(fn);
+    return () => this.companyActivityListeners.delete(fn);
+  }
+
+  subscribeToGlobalNotification(fn: (notification: GlobalNotification) => void) {
+    this.globalNotificationListeners.add(fn);
+    return () => this.globalNotificationListeners.delete(fn);
+  }
+
   async connect(userId: number) {
     this.currentUserId = userId;
     
@@ -144,6 +171,16 @@ class ChatService {
     this.socket.on('training_online_count_update', (count: number) => {
       this._snapshot = { ...this._snapshot, trainingOnlineCount: count };
       this.notify();
+    });
+
+    // Actividad en tiempo real de empresas
+    this.socket.on('company_activity', (activity: CompanyActivity) => {
+      this.companyActivityListeners.forEach(fn => fn(activity));
+    });
+
+    // Notificaciones globales (ej. Calendario)
+    this.socket.on('global_notification', (notification: GlobalNotification) => {
+      this.globalNotificationListeners.forEach(fn => fn(notification));
     });
 
     // Escuchar cuando el otro usuario lee mis mensajes

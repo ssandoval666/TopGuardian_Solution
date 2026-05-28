@@ -170,6 +170,15 @@ router.post('/', authenticateToken, async (req, res) => {
     // but we send them for consistency with the GET endpoint.
     const matrixWithData = { ...matrix, sectors: [], hazards: [], cells: [] };
 
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('company_activity', {
+        companyId: String(companyId),
+        message: `Nueva matriz de riesgo (IPERC) creada: ${name}`,
+        timestamp: new Date().toISOString()
+      });
+    }
+
     res.status(201).json(matrixWithData);
   } catch (err) {
     res.status(500).json({ error: err.message });
