@@ -42,7 +42,7 @@ const DashboardHome = () => {
   }, []);
 
   const dynamicStats = [
-    { label: "Administradores", value: activeUsers.toString(), icon: Users, change: "En línea" },
+    { label: "Usuarios Activos", value: activeUsers.toString(), icon: Users, change: "En línea" },
     { label: "Operarios (Training)", value: trainingUsers.toString(), icon: GraduationCap, change: "Conectados ahora" },
     { label: "Reportes", value: "142", icon: BarChart3, change: "+3.1%" },
     { label: "Sesiones hoy", value: "1,024", icon: Activity, change: "+18%" },
