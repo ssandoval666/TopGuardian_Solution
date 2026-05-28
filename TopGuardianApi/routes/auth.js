@@ -4,6 +4,9 @@ const bcrypt = require('bcryptjs');
 const router = express.Router();
 const db = require('../database');
 
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-for-dev-only-change-it';
+const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'your-refresh-secret-key-for-dev';
+
 /**
  * @swagger
  * /auth/login:
@@ -60,8 +63,8 @@ router.post('/login', (req, res) => {
         role: user.role
       };
 
-      const accessToken = jwt.sign(tokenPayload, 'your-secret-key', { expiresIn: '1h' });
-      const refreshToken = jwt.sign({ id: user.id }, 'your-refresh-secret-key', { expiresIn: '7d' });
+      const accessToken = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: '1h' });
+      const refreshToken = jwt.sign({ id: user.id }, JWT_REFRESH_SECRET, { expiresIn: '7d' });
 
       res.json({
         user: {
@@ -106,7 +109,7 @@ router.post('/refresh', (req, res) => {
   const { refreshToken } = req.body;
 
   try {
-    const decoded = jwt.verify(refreshToken, 'your-refresh-secret-key');
+    const decoded = jwt.verify(refreshToken, JWT_REFRESH_SECRET);
 
     db.get('SELECT * FROM users WHERE id = ? AND active = 1', [decoded.id], (err, user) => {
       if (err) return res.status(500).json({ error: err.message });
@@ -118,8 +121,8 @@ router.post('/refresh', (req, res) => {
         role: user.role
       };
 
-      const accessToken = jwt.sign(tokenPayload, 'your-secret-key', { expiresIn: '1h' });
-      const newRefreshToken = jwt.sign({ id: user.id }, 'your-refresh-secret-key', { expiresIn: '7d' });
+      const accessToken = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: '1h' });
+      const newRefreshToken = jwt.sign({ id: user.id }, JWT_REFRESH_SECRET, { expiresIn: '7d' });
 
       res.json({
         accessToken,
@@ -167,7 +170,7 @@ router.post('/training-login', async (req, res) => {
     if (!employee.active) return res.status(403).json({ error: 'El acceso de este empleado está inactivo.' });
 
     // 3. Generar JWT
-    const token = jwt.sign({ id: employee.id, companyId: company.id, role: 'Employee', type: 'training_app' }, 'your-secret-key', { expiresIn: '24h' });
+    const token = jwt.sign({ id: employee.id, companyId: company.id, role: 'Employee', type: 'training_app' }, JWT_SECRET, { expiresIn: '24h' });
 
     res.json({
       employee: {

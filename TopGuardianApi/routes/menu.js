@@ -21,7 +21,7 @@ const db = require('../database');
  *       200:
  *         description: Menu items
  */
-router.get('/', async (req, res) => {
+router.get('/', authenticateToken, async (req, res) => {
   const { userId } = req.query;
 
   try {
@@ -83,7 +83,7 @@ router.get('/', async (req, res) => {
  *       200:
  *         description: All menu items
  */
-router.get('/all', async (req, res) => {
+router.get('/all', authenticateToken, async (req, res) => {
   try {
     // Migración automática para asegurar el orden exacto (Drag and Drop)
     try { await db.runAsync('ALTER TABLE menus ADD COLUMN order_index INTEGER DEFAULT 0'); } catch(e) {}
@@ -160,7 +160,7 @@ router.get('/all', async (req, res) => {
  *       201:
  *         description: Menu item created
  */
-router.post('/', async (req, res) => {
+router.post('/', authenticateToken, async (req, res) => {
   const { label, icon, path, parentId, requiredRoles } = req.body;
 
   if (!label || !icon || !requiredRoles) {
@@ -280,7 +280,7 @@ router.put('/structure', authenticateToken, async (req, res) => {
  *       200:
  *         description: Menu item updated
  */
-router.put('/:id', async (req, res) => {
+router.put('/:id', authenticateToken, async (req, res) => {
   const { id } = req.params;
   const { label, icon, path, requiredRoles } = req.body;
 
@@ -335,7 +335,7 @@ router.put('/:id', async (req, res) => {
  *       200:
  *         description: Menu item deleted
  */
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', authenticateToken, async (req, res) => {
   const { id } = req.params;
 
   try {

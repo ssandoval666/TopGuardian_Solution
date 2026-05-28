@@ -1,0 +1,6 @@
+# Archivos de dependencias y configuración local
+node_modules
+.env
+
+# Archivos de base de datos de SQLite
+*.db
