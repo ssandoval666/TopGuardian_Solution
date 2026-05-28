@@ -130,7 +130,7 @@ router.post('/', authenticateToken, async (req, res) => {
     if (io) {
       io.emit('company_activity', {
         companyId: String(companyId),
-        message: `Nuevo empleado registrado: ${firstName} ${lastName}`,
+        message: `Nuevo empleado registrado: ${firstName} ${lastName} por ${req.user.name || req.user.username}`,
         timestamp: new Date().toISOString()
       });
     }
@@ -241,7 +241,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
     if (io) {
       io.emit('company_activity', {
         companyId: String(employee.company_id),
-        message: `Datos actualizados para el empleado: ${employee.first_name} ${employee.last_name}`,
+        message: `Datos actualizados para el empleado: ${employee.first_name} ${employee.last_name} por ${req.user.name || req.user.username}`,
         timestamp: new Date().toISOString()
       });
     }
@@ -281,7 +281,7 @@ router.delete('/:id', authenticateToken, async (req, res) => {
       if (io) {
         io.emit('company_activity', {
           companyId: String(employee.company_id),
-          message: `Empleado eliminado de la nómina: ${employee.first_name} ${employee.last_name}`,
+          message: `Empleado eliminado de la nómina: ${employee.first_name} ${employee.last_name} por ${req.user.name || req.user.username}`,
           timestamp: new Date().toISOString()
         });
       }

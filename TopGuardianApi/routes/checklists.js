@@ -283,7 +283,7 @@ router.post('/visits', authenticateToken, async (req, res) => {
     if (io) {
       io.emit('company_activity', {
         companyId: String(companyId),
-        message: `Nuevo Check List registrado para el ${visitDate}`,
+        message: `Nuevo Check List registrado para el ${visitDate} por ${req.user.name || req.user.username}`,
         timestamp: new Date().toISOString()
       });
     }

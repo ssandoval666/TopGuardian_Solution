@@ -89,7 +89,7 @@ router.post('/', authenticateToken, authorizeRole(['Administrador', 'Editor']), 
     if (io) {
       io.emit('company_activity', {
         companyId: String(companyId),
-        message: `Nuevo plano cargado: ${name}`,
+        message: `Nuevo plano cargado: ${name} por ${req.user.name || req.user.username}`,
         timestamp: new Date().toISOString()
       });
     }

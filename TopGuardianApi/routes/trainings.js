@@ -552,7 +552,7 @@ router.post('/company', authenticateToken, authorizeRole(['Administrador', 'Edit
     if (io) {
       io.emit('company_activity', {
         companyId: String(companyId),
-        message: `Nueva capacitación asignada: ${assignment.training_title}`,
+        message: `Nueva capacitación asignada: ${assignment.training_title} por ${req.user.name || req.user.username}`,
         timestamp: new Date().toISOString()
       });
     }
@@ -667,7 +667,7 @@ router.delete('/company/:id', authenticateToken, authorizeRole(['Administrador',
       if (io) {
         io.emit('company_activity', {
           companyId: String(assignment.company_id),
-          message: `Capacitación desasignada: ${assignment.title}`,
+          message: `Capacitación desasignada: ${assignment.title} por ${req.user.name || req.user.username}`,
           timestamp: new Date().toISOString()
         });
       }

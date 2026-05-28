@@ -67,6 +67,7 @@ router.post('/login', loginLimiter, (req, res) => {
 
       const tokenPayload = {
         id: user.id,
+        name: user.name,
         username: user.username,
         role: user.role
       };
@@ -125,6 +126,7 @@ router.post('/refresh', (req, res) => {
 
       const tokenPayload = {
         id: user.id,
+        name: user.name,
         username: user.username,
         role: user.role
       };

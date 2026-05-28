@@ -452,7 +452,7 @@ const insertMockData = async () => {
       { key: 'settings', name: 'Configuración', icon: 'Settings', path: '', parent_key: null, roles: 'Administrador,Editor,Visualizador' },
       { key: 'companies', name: 'Empresas', icon: 'Building2', path: '/dashboard/companies', parent_key: 'settings', roles: 'Administrador,Editor,Visualizador' },
       { key: 'users', name: 'Usuarios', icon: 'Users', path: '/dashboard/users', parent_key: 'settings', roles: 'Administrador' },
-      { key: 'menu', name: 'menu', icon: 'ClipboardList', path: '/dashboard/menu', parent_key: 'settings', roles: 'Administrador,Editor,Visualizador' },
+      { key: 'menu', name: 'Menu', icon: 'ClipboardList', path: '/dashboard/menu', parent_key: 'settings', roles: 'Administrador,Editor,Visualizador' },
       { key: 'trainings', name: 'Capacitaciones', icon: 'GraduationCap', path: '/dashboard/trainings', parent_key: 'settings', roles: 'Administrador,Editor,Visualizador' },
       { key: 'checklist-items', name: 'Items Check List', icon: 'ClipboardList', path: '/dashboard/checklist-items', parent_key: 'settings', roles: 'Administrador,Editor,Visualizador' },
       { key: 'peligro-categorias', name: 'Categorías de Peligro', icon: 'AlertTriangle', path: '/dashboard/peligro-categorias', parent_key: 'settings', roles: 'Administrador,Editor,Visualizador' }

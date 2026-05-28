@@ -106,26 +106,29 @@ const ChatWidget = () => {
 
       {/* Chat panel */}
       {open && (
-        <div className="fixed bottom-6 right-6 z-50 w-80 sm:w-96 h-[480px] rounded-2xl bg-card border border-border shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom-4 duration-200">
-          {currentSelectedUser ? (
-            <ChatConversation
-              otherUser={currentSelectedUser}
-              onBack={() => setSelectedUser(null)}
-              onClose={() => { setOpen(false); setSelectedUser(null); }}
-              loadConversation={loadConversation}
-              markAsRead={markAsRead}
-            />
-          ) : (
-            <ChatUserList
-              users={users}
-              onSelect={(u) => {
-                setSelectedUser(u);
-                markAsRead(u.id);
-              }}
-              onClose={() => setOpen(false)}
-            />
-          )}
-        </div>
+        <>
+          <div className="fixed inset-0 z-40 bg-transparent" onClick={() => setOpen(false)} />
+          <div className="fixed bottom-6 right-6 z-50 w-80 sm:w-96 h-[480px] rounded-2xl bg-card border border-border shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom-4 duration-200">
+            {currentSelectedUser ? (
+              <ChatConversation
+                otherUser={currentSelectedUser}
+                onBack={() => setSelectedUser(null)}
+                onClose={() => { setOpen(false); setSelectedUser(null); }}
+                loadConversation={loadConversation}
+                markAsRead={markAsRead}
+              />
+            ) : (
+              <ChatUserList
+                users={users}
+                onSelect={(u) => {
+                  setSelectedUser(u);
+                  markAsRead(u.id);
+                }}
+                onClose={() => setOpen(false)}
+              />
+            )}
+          </div>
+        </>
       )}
     </>
   );

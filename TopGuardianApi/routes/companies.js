@@ -190,7 +190,7 @@ router.put('/:id', authenticateToken, authorizeRole(['Administrador']), async (r
     if (io) {
       io.emit('company_activity', {
         companyId: String(id),
-        message: `Los datos generales de la empresa han sido actualizados`,
+        message: `Los datos generales de la empresa han sido actualizados por ${req.user.name || req.user.username}`,
         timestamp: new Date().toISOString()
       });
     }

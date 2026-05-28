@@ -174,7 +174,7 @@ router.post('/', authenticateToken, async (req, res) => {
     if (io) {
       io.emit('company_activity', {
         companyId: String(companyId),
-        message: `Nueva matriz de riesgo (IPERC) creada: ${name}`,
+        message: `Nueva matriz de riesgo (IPERC) creada: ${name} por ${req.user.name || req.user.username}`,
         timestamp: new Date().toISOString()
       });
     }

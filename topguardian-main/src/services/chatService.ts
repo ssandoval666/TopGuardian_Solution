@@ -49,6 +49,7 @@ class ChatService {
   private forceLogoutCallback?: () => void;
   private companyActivityListeners: Set<(activity: CompanyActivity) => void> = new Set();
   private globalNotificationListeners: Set<(notification: GlobalNotification) => void> = new Set();
+  private _companyActivities: CompanyActivity[] = [];
 
   onForceLogout(callback?: () => void) {
     this.forceLogoutCallback = callback;
@@ -120,12 +121,16 @@ class ChatService {
 
   subscribeToCompanyActivity(fn: (activity: CompanyActivity) => void) {
     this.companyActivityListeners.add(fn);
-    return () => this.companyActivityListeners.delete(fn);
+    return () => {
+      this.companyActivityListeners.delete(fn);
+    };
   }
 
   subscribeToGlobalNotification(fn: (notification: GlobalNotification) => void) {
     this.globalNotificationListeners.add(fn);
-    return () => this.globalNotificationListeners.delete(fn);
+    return () => {
+      this.globalNotificationListeners.delete(fn);
+    };
   }
 
   async connect(userId: number) {
@@ -175,6 +180,7 @@ class ChatService {
 
     // Actividad en tiempo real de empresas
     this.socket.on('company_activity', (activity: CompanyActivity) => {
+      this._companyActivities = [activity, ...this._companyActivities].slice(0, 50); // Mantiene las últimas 50 en memoria
       this.companyActivityListeners.forEach(fn => fn(activity));
     });
 
@@ -226,6 +232,7 @@ class ChatService {
       this.socket = null;
     }
     this.currentUserId = null;
+    this._companyActivities = []; // Limpiar historial al cerrar sesión
   }
 
   async sendMessage(toUserId: number, text: string) {
@@ -346,6 +353,10 @@ class ChatService {
 
   getCurrentUserId() {
     return this.currentUserId;
+  }
+
+  getCompanyActivities(companyId: string): CompanyActivity[] {
+    return this._companyActivities.filter(a => String(a.companyId) === String(companyId)).slice(0, 10);
   }
 }
 

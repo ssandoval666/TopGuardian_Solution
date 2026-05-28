@@ -22,7 +22,7 @@ const DashboardHome = () => {
     if (!selectedCompany) return;
     setIsLoading(true);
     setShowPendingList(false);
-    setRecentActivities([]); // Limpiar actividad al cambiar de empresa
+    setRecentActivities(chatService.getCompanyActivities(selectedCompany.id)); // Cargar historial de la memoria
     apiFetchCompanyTrainingStats(selectedCompany.id).then((res) => {
       setCompleted(res.completed);
       setPending(res.pending);
@@ -47,7 +47,7 @@ const DashboardHome = () => {
   useEffect(() => {
     const unsub = chatService.subscribeToCompanyActivity((activity) => {
       if (selectedCompany && String(activity.companyId) === String(selectedCompany.id)) {
-        setRecentActivities(prev => [activity, ...prev].slice(0, 10)); // Mantener las últimas 10
+        setRecentActivities(chatService.getCompanyActivities(selectedCompany.id));
       }
     });
     return unsub;
@@ -194,15 +194,22 @@ const DashboardHome = () => {
                   No hay actividad reciente en esta sesión
                 </div>
               ) : (
-                recentActivities.map((act, i) => (
-                  <div key={i} className="flex items-center gap-3 p-3 rounded-md bg-muted/50 animate-fade-in">
-                    <div className="h-2 w-2 rounded-full bg-primary flex-shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-foreground truncate">{act.message}</p>
-                      <p className="text-[10px] text-muted-foreground">{new Date(act.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</p>
+                recentActivities.map((act, i) => {
+                  const lastPorIndex = act.message.lastIndexOf(" por ");
+                  const actionMessage = lastPorIndex !== -1 ? act.message.substring(0, lastPorIndex) : act.message;
+                  const author = lastPorIndex !== -1 ? act.message.substring(lastPorIndex + 5) : "Sistema";
+                  const time = new Date(act.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+                  return (
+                    <div key={i} className="flex items-center gap-3 p-3 rounded-md bg-muted/50 animate-fade-in">
+                      <div className="h-2 w-2 rounded-full bg-primary flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-foreground truncate" title={actionMessage}>{actionMessage}</p>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">{author} a las {time}</p>
+                      </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           )}
