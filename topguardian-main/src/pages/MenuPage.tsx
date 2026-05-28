@@ -30,7 +30,8 @@ import {
 import {
   Plus, Pencil, Trash2, Loader2, ChevronRight, ChevronDown, GripVertical,
   Settings, LayoutDashboard, Users, BarChart3, ShoppingCart, FileText,
-  Building2, GraduationCap, Shield, Map, ClipboardCheck, ClipboardList, CalendarDays, ShieldAlert
+  Building2, GraduationCap, Shield, Map, ClipboardCheck, ClipboardList, CalendarDays, ShieldAlert,
+  AlertTriangle
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -50,6 +51,7 @@ const availableIcons = [
   { name: "ClipboardList", icon: ClipboardList },
   { name: "CalendarDays", icon: CalendarDays },
   { name: "ShieldAlert", icon: ShieldAlert },
+  { name: "AlertTriangle", icon: AlertTriangle },
 ];
 
 const emptyForm: Omit<MenuItemRaw, "id"> = {

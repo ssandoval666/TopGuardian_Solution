@@ -1,6 +1,3 @@
-const dotenv = require('dotenv');
-dotenv.config();
-
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -10,14 +7,12 @@ const swaggerJsdoc = require('swagger-jsdoc');
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs');
-const compression = require('compression');
-const helmet = require('helmet');
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: process.env.CORS_ORIGIN || "*", 
+    origin: "*", // Nota: En producción cambia esto por la URL de tu frontend (ej: 'http://localhost:3000')
     methods: ["GET", "POST"]
   }
 });
@@ -27,9 +22,7 @@ const PORT = process.env.PORT || 9000;
 app.set('io', io);
 
 // Middleware
-app.use(helmet({ crossOriginResourcePolicy: false })); // Añade cabeceras de seguridad HTTP (XSS, Sniffing, etc.)
-app.use(compression()); // Comprime las respuestas JSON y recorta el consumo de red en un ~80%
-app.use(cors({ origin: process.env.CORS_ORIGIN || "*" }));
+app.use(cors());
 
 // Custom JSON parser with error handling
 app.use(express.json({
@@ -42,8 +35,13 @@ app.use(express.json({
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // Database setup
-const dbPath = path.join(__dirname, 'TopGuardian_Api.db');
-const db = new sqlite3.Database(dbPath);
+const dbPath = path.join(__dirname, process.env.DB_NAME || 'TopGuardian_Api.db');
+const db = new sqlite3.Database(dbPath, (err) => {
+  if (!err) {
+    db.run('PRAGMA journal_mode = WAL;'); // Habilita concurrencia real (lecturas no bloquean escrituras)
+    db.run('PRAGMA synchronous = NORMAL;'); // Mejora drásticamente la velocidad de I/O en disco
+  }
+});
 
 // Initialize database
 const initDatabase = () => {
@@ -233,6 +231,11 @@ const initDatabase = () => {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users (id)
       )`,
+      `CREATE TABLE IF NOT EXISTS hazard_categories (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT UNIQUE NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`,
       `CREATE TABLE IF NOT EXISTS menus (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         key TEXT NOT NULL,
@@ -241,6 +244,7 @@ const initDatabase = () => {
         path TEXT,
         parent_key TEXT,
         roles TEXT NOT NULL,
+        order_index INTEGER DEFAULT 0,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )`,
       `CREATE TABLE IF NOT EXISTS roles (
@@ -260,7 +264,14 @@ const initDatabase = () => {
       `CREATE INDEX IF NOT EXISTS idx_chat_messages_users ON chat_messages(from_user_id, to_user_id)`,
       `CREATE INDEX IF NOT EXISTS idx_chat_messages_unread ON chat_messages(to_user_id, read_status)`,
       `CREATE INDEX IF NOT EXISTS idx_user_presence_online ON user_presence(is_online)`,
-      `CREATE INDEX IF NOT EXISTS idx_users_active ON users(active)`
+      `CREATE INDEX IF NOT EXISTS idx_users_active ON users(active)`,
+      // Índices para escalabilidad de relaciones (evita Full Table Scans)
+      `CREATE INDEX IF NOT EXISTS idx_company_users_company ON company_users(company_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_employees_company ON employees(company_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_employee_trainings_emp ON employee_trainings(employee_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_employee_records_emp ON employee_training_records(employee_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_planos_company ON planos(company_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_checklists_company ON checklist_visits(company_id)`
     ];
 
     let completed = 0;
@@ -293,7 +304,7 @@ const insertMockData = async () => {
   try {
     // Clear existing data to avoid duplicates
     const clearTables = async () => {
-      const tablesToClear = ['users', 'companies', 'company_users', 'employees', 'trainings', 'training_questionnaires', 'company_trainings', 'employee_trainings', 'employee_training_records', 'planos', 'checklist_items', 'checklist_visits', 'checklist_entries', 'risk_matrices', 'risk_matrix_sectors', 'risk_matrix_hazards', 'risk_matrix_cells', 'chat_messages', 'menus', 'roles'];
+      const tablesToClear = ['users', 'companies', 'company_users', 'employees', 'trainings', 'training_questionnaires', 'company_trainings', 'employee_trainings', 'employee_training_records', 'planos', 'checklist_items', 'checklist_visits', 'checklist_entries', 'risk_matrices', 'risk_matrix_sectors', 'risk_matrix_hazards', 'risk_matrix_cells', 'chat_messages', 'menus', 'roles', 'hazard_categories'];
       for (const table of tablesToClear) {
         await new Promise((resolve, reject) => {
           db.run(`DELETE FROM ${table}`, (err) => {
@@ -401,6 +412,17 @@ const insertMockData = async () => {
       });
     }
 
+    // Hazard Categories
+    const hazardCategories = ['Físico', 'Químico', 'Biológico', 'Ergonómico', 'Psicosocial', 'Mecánico', 'Eléctrico'];
+    for (const cat of hazardCategories) {
+      await new Promise((resolve, reject) => {
+        db.run('INSERT INTO hazard_categories (name) VALUES (?)', [cat], function(err) {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+    }
+
     // Checklist items
     const checklistItems = [
       ['Extintores en buen estado', 'Seguridad'],
@@ -424,20 +446,22 @@ const insertMockData = async () => {
       { key: 'risk-matrix', name: 'Matriz de Riesgo', icon: 'Shield', path: '/dashboard/risk-matrix', parent_key: null, roles: 'Administrador,Editor,Visualizador' },
       { key: 'planos', name: 'Planos', icon: 'Map', path: '/dashboard/planos', parent_key: null, roles: 'Administrador,Editor,Visualizador' },
       { key: 'checklist-visits', name: 'Check Lista Visitas', icon: 'ClipboardCheck', path: '/dashboard/checklist-visits', parent_key: null, roles: 'Administrador,Editor,Visualizador' },
+      { key: 'registro-capacitaciones', name: 'Registro de Capacitaciones', icon: 'FileText', path: '/dashboard/registro-capacitaciones', parent_key: null, roles: 'Administrador,Editor,Visualizador' },
+      { key: 'sesiones-activas', name: 'Sesiones Activas', icon: 'ShieldAlert', path: '/dashboard/sesiones-activas', parent_key: null, roles: 'Administrador' },
       { key: 'settings', name: 'Configuración', icon: 'Settings', path: '', parent_key: null, roles: 'Administrador,Editor,Visualizador' },
       { key: 'companies', name: 'Empresas', icon: 'Building2', path: '/dashboard/companies', parent_key: 'settings', roles: 'Administrador,Editor,Visualizador' },
       { key: 'users', name: 'Usuarios', icon: 'Users', path: '/dashboard/users', parent_key: 'settings', roles: 'Administrador' },
       { key: 'menu', name: 'menu', icon: 'ClipboardList', path: '/dashboard/menu', parent_key: 'settings', roles: 'Administrador,Editor,Visualizador' },
       { key: 'trainings', name: 'Capacitaciones', icon: 'GraduationCap', path: '/dashboard/trainings', parent_key: 'settings', roles: 'Administrador,Editor,Visualizador' },
       { key: 'checklist-items', name: 'Items Check List', icon: 'ClipboardList', path: '/dashboard/checklist-items', parent_key: 'settings', roles: 'Administrador,Editor,Visualizador' },
-      { key: 'registro-capacitaciones', name: 'Registro de Capacitaciones', icon: 'FileText', path: '/dashboard/registro-capacitaciones', parent_key: null, roles: 'Administrador,Editor,Visualizador' },
-      { key: 'sesiones-activas', name: 'Sesiones Activas', icon: 'ShieldAlert', path: '/dashboard/sesiones-activas', parent_key: null, roles: 'Administrador' }
+      { key: 'peligro-categorias', name: 'Categorías de Peligro', icon: 'AlertTriangle', path: '/dashboard/peligro-categorias', parent_key: 'settings', roles: 'Administrador,Editor,Visualizador' }
     ];
 
+    let orderIndex = 0;
     for (const menu of menuData) {
       await new Promise((resolve, reject) => {
-        db.run('INSERT INTO menus (key, name, icon, path, parent_key, roles) VALUES (?, ?, ?, ?, ?, ?)', 
-          [menu.key, menu.name, menu.icon, menu.path, menu.parent_key, menu.roles], function(err) {
+        db.run('INSERT INTO menus (key, name, icon, path, parent_key, roles, order_index) VALUES (?, ?, ?, ?, ?, ?, ?)', 
+          [menu.key, menu.name, menu.icon, menu.path, menu.parent_key, menu.roles, orderIndex++], function(err) {
           if (err) reject(err);
           else resolve();
         });
@@ -509,6 +533,7 @@ const riskMatrixRoutes = require('./routes/riskMatrices');
 const menuRoutes = require('./routes/menu');
 const chatRoutes = require('./routes/chat');
 const rolesRoutes = require('./routes/roles');
+const hazardCategoriesRoutes = require('./routes/hazardCategories');
 const calendarRoutes = require('./routes/calendar');
 
 // Override para asegurar que el chat muestre TODOS los usuarios reales de la DB sin hardcode
@@ -536,6 +561,7 @@ app.use('/risk-matrices', riskMatrixRoutes);
 app.use('/menu', menuRoutes);
 app.use('/chat', chatRoutes);
 app.use('/roles', rolesRoutes);
+app.use('/hazard-categories', hazardCategoriesRoutes);
 app.use('/calendar', calendarRoutes);
 
 // Health check
@@ -561,7 +587,8 @@ app.use((err, req, res, next) => {
   }
   
   console.error('Error:', err.stack);
-  res.status(500).json({ error: 'Something went wrong!' });
+  // Evitar exponer la traza del stack al cliente en producción por motivos de seguridad
+  res.status(500).json({ error: process.env.NODE_ENV === 'development' ? err.message : 'Error interno del servidor' });
 });
 
 // =========================================

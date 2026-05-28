@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../database');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, authorizeRole } = require('../middleware/auth');
 
 /**
  * @swagger
@@ -124,7 +124,7 @@ router.get('/list', authenticateToken, async (req, res) => {
  *       201:
  *         description: Company created
  */
-router.post('/', authenticateToken, async (req, res) => {
+router.post('/', authenticateToken, authorizeRole(['Administrador']), async (req, res) => {
   try {
     const { name, ruc, address, phone, email } = req.body;
     const result = await db.runAsync(
@@ -173,7 +173,7 @@ router.post('/', authenticateToken, async (req, res) => {
  *       200:
  *         description: Company updated
  */
-router.put('/:id', authenticateToken, async (req, res) => {
+router.put('/:id', authenticateToken, authorizeRole(['Administrador']), async (req, res) => {
   try {
     const { id } = req.params;
     const { name, ruc, address, phone, email } = req.body;
@@ -210,7 +210,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
  *       204:
  *         description: Company deleted
  */
-router.delete('/:id', authenticateToken, async (req, res) => {
+router.delete('/:id', authenticateToken, authorizeRole(['Administrador']), async (req, res) => {
   try {
     const { id } = req.params;
     await db.runAsync('DELETE FROM companies WHERE id = ?', [id]);
@@ -278,7 +278,7 @@ router.get('/:id/users', authenticateToken, async (req, res) => {
  *       200:
  *         description: Users updated
  */
-router.put('/:id/users', authenticateToken, async (req, res) => {
+router.put('/:id/users', authenticateToken, authorizeRole(['Administrador']), async (req, res) => {
   try {
     const { id } = req.params;
     const { userIds } = req.body;

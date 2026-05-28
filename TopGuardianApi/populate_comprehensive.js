@@ -371,9 +371,10 @@ function insertMenu() {
   ];
 
   let menuCount = 0;
+  let orderIndex = 0;
   menuItems.forEach(menu => {
-    db.run('INSERT OR IGNORE INTO menus (key, name, icon, path, parent_key, roles) VALUES (?, ?, ?, ?, ?, ?)',
-      [menu.key, menu.name, menu.icon, menu.path, menu.parent_key, menu.roles], function(err) {
+    db.run('INSERT OR IGNORE INTO menus (key, name, icon, path, parent_key, roles, order_index) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [menu.key, menu.name, menu.icon, menu.path, menu.parent_key, menu.roles, orderIndex++], function(err) {
         if (err) console.error('Error inserting menu item:', err);
         else menuCount++;
         if (menuCount === menuItems.length) {

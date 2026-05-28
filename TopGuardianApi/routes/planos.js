@@ -14,7 +14,6 @@ const { authenticateToken } = require('../middleware/auth');
  *     parameters:
  *       - in: query
  *         name: companyId
- *         required: true
  *         schema:
  *           type: integer
  *     responses:
@@ -24,7 +23,16 @@ const { authenticateToken } = require('../middleware/auth');
 router.get('/', authenticateToken, async (req, res) => {
   try {
     const { companyId } = req.query;
-    const planos = await db.allAsync('SELECT * FROM planos WHERE company_id = ? ORDER BY created_at DESC', [companyId]);
+    
+    let sql = 'SELECT * FROM planos';
+    const params = [];
+    if (companyId) {
+      sql += ' WHERE company_id = ?';
+      params.push(companyId);
+    }
+    sql += ' ORDER BY created_at DESC';
+    
+    const planos = await db.allAsync(sql, params);
     res.json(planos);
   } catch (err) {
     res.status(500).json({ error: err.message });

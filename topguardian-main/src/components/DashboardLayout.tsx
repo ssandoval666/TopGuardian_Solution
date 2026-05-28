@@ -108,16 +108,27 @@ const DashboardLayout = () => {
                     className={`flex items-center gap-3 w-full rounded-md px-3 py-2.5 text-sm font-medium transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${
                       isAnyChildActive ? "text-sidebar-accent-foreground bg-sidebar-accent/50" : "text-sidebar-foreground"
                     } ${collapsed ? "justify-center" : ""}`}
-                    title={collapsed ? item.label : ""}
+                    title={collapsed ? item.label : undefined}
                   >
                     <item.icon className="h-5 w-5 flex-shrink-0" />
                     {!collapsed && (
                       <>
-                        <span className="flex-1 text-left">{item.label}</span>
+                        <span 
+                          className="flex-1 text-left truncate"
+                          onMouseEnter={(e) => {
+                            if (e.currentTarget.scrollWidth > e.currentTarget.clientWidth) {
+                              e.currentTarget.title = item.label;
+                            } else {
+                              e.currentTarget.removeAttribute("title");
+                            }
+                          }}
+                        >
+                          {item.label}
+                        </span>
                         {isOpen ? (
-                          <ChevronDown className="h-4 w-4" />
+                      <ChevronDown className="h-4 w-4 flex-shrink-0" />
                         ) : (
-                          <ChevronRight className="h-4 w-4" />
+                      <ChevronRight className="h-4 w-4 flex-shrink-0" />
                         )}
                       </>
                     )}
@@ -145,10 +156,21 @@ const DashboardLayout = () => {
                               ? "text-sidebar-accent-foreground bg-sidebar-accent/50 font-medium"
                               : "text-sidebar-foreground"
                           }`}
-                          title={collapsed ? child.label : ""}
+                          title={undefined}
                         >
                           <child.icon className="h-4 w-4 flex-shrink-0" />
-                          <span>{child.label}</span>
+                          <span 
+                            className="flex-1 text-left truncate"
+                            onMouseEnter={(e) => {
+                              if (e.currentTarget.scrollWidth > e.currentTarget.clientWidth) {
+                                e.currentTarget.title = child.label;
+                              } else {
+                                e.currentTarget.removeAttribute("title");
+                              }
+                            }}
+                          >
+                            {child.label}
+                          </span>
                         </button>
                       ))}
                     </div>
@@ -175,10 +197,23 @@ const DashboardLayout = () => {
                 } ${
                   isItemActive ? "text-sidebar-accent-foreground bg-sidebar-accent/50" : "text-sidebar-foreground"
                 } ${collapsed ? "justify-center" : ""}`}
-                title={collapsed ? item.label : ""}
+                title={collapsed ? item.label : undefined}
               >
                 <item.icon className="h-5 w-5 flex-shrink-0" />
-                {!collapsed && <span>{item.label}</span>}
+                {!collapsed && (
+                  <span 
+                    className="flex-1 text-left truncate"
+                    onMouseEnter={(e) => {
+                      if (e.currentTarget.scrollWidth > e.currentTarget.clientWidth) {
+                        e.currentTarget.title = item.label;
+                      } else {
+                        e.currentTarget.removeAttribute("title");
+                      }
+                    }}
+                  >
+                    {item.label}
+                  </span>
+                )}
               </button>
             );
           })

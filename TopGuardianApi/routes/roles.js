@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../database');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, authorizeRole } = require('../middleware/auth');
 
 /**
  * @swagger
@@ -103,7 +103,7 @@ router.get('/list', authenticateToken, async (req, res) => {
  *       201:
  *         description: Role created
  */
-router.post('/', authenticateToken, async (req, res) => {
+router.post('/', authenticateToken, authorizeRole(['Administrador']), async (req, res) => {
   try {
     const { nombre } = req.body;
 
@@ -154,7 +154,7 @@ router.post('/', authenticateToken, async (req, res) => {
  *       200:
  *         description: Role updated
  */
-router.put('/:id', authenticateToken, async (req, res) => {
+router.put('/:id', authenticateToken, authorizeRole(['Administrador']), async (req, res) => {
   try {
     const { id } = req.params;
     const { nombre } = req.body;
@@ -200,7 +200,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
  *       200:
  *         description: Role deleted
  */
-router.delete('/:id', authenticateToken, async (req, res) => {
+router.delete('/:id', authenticateToken, authorizeRole(['Administrador']), async (req, res) => {
   try {
     const { id } = req.params;
 

@@ -1,7 +1,7 @@
 import { User, Capacitacion, CapacitacionesResponse, PreguntaCuestionario, RegistroCapacitacion } from "@/types";
 
-// Configurable session timeout in milliseconds (default: 15 minutes)
-export const SESSION_TIMEOUT_MS = 15 * 60 * 1000;
+// Leer session timeout desde .env o default de 15 minutos
+export const SESSION_TIMEOUT_MS = Number(import.meta.env.VITE_SESSION_TIMEOUT_MS) || 15 * 60 * 1000;
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:9000';
 

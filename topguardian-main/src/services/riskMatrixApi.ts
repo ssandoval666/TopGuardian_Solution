@@ -79,18 +79,36 @@ export const getRiskLevel = (score: number): RiskLevel => {
   return "intolerable";
 };
 
-export let HAZARD_CATEGORIES = [
-  "Físico", "Químico", "Biológico", "Ergonómico", "Psicosocial", "Mecánico", "Eléctrico",
-];
+export interface HazardCategory {
+  id: string;
+  name: string;
+}
 
-export const addHazardCategory = (category: string) => {
-  if (!HAZARD_CATEGORIES.includes(category)) {
-    HAZARD_CATEGORIES = [...HAZARD_CATEGORIES, category];
-  }
+export const apiFetchHazardCategories = async (): Promise<HazardCategory[]> => {
+  const res = await apiCall('/hazard-categories');
+  return Array.isArray(res) ? res.map((c: any) => ({ ...c, id: String(c.id) })) : [];
 };
 
-export const removeHazardCategory = (category: string) => {
-  HAZARD_CATEGORIES = HAZARD_CATEGORIES.filter((c) => c !== category);
+export const apiCreateHazardCategory = async (category: Omit<HazardCategory, "id">): Promise<HazardCategory> => {
+  const res = await apiCall('/hazard-categories', {
+    method: 'POST',
+    body: JSON.stringify(category),
+  });
+  return { ...res, id: String(res.id) };
+};
+
+export const apiUpdateHazardCategory = async (id: string, category: Partial<HazardCategory>): Promise<HazardCategory> => {
+  const res = await apiCall(`/hazard-categories/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(category),
+  });
+  return { ...res, id: String(res.id) };
+};
+
+export const apiDeleteHazardCategory = async (id: string): Promise<void> => {
+  return apiCall(`/hazard-categories/${id}`, {
+    method: 'DELETE',
+  });
 };
 
 export const apiFetchRiskMatrices = async (companyId?: string): Promise<RiskMatrix[]> => {

@@ -89,12 +89,10 @@ const PlanosPage = () => {
   const loadPlanos = useCallback(async () => {
     setLoading(true);
     try {
-      const allResults = await Promise.all(
-        companies.map((c) => apiFetchPlanos(c.id))
-      );
+      const allResults = await apiFetchPlanos();
       
       // Normalizar propiedades del backend (snake_case a camelCase) y asegurar tipos
-      const flat = allResults.flat().filter(Boolean).map((p: any) => {
+      const flat = allResults.filter(Boolean).map((p: any) => {
         const rawData = p.fileData || p.file_data;
         const parsedData = rawData?.data ? rawData.data : rawData;
         return {

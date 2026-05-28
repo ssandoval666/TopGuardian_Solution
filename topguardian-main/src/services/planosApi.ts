@@ -55,8 +55,9 @@ export const byteArrayToUrl = (data: number[], mimeType = "application/pdf"): st
   return URL.createObjectURL(blob);
 };
 
-export const apiFetchPlanos = async (companyId: string): Promise<Plano[]> => {
-  return apiCall(`/planos?companyId=${companyId}`);
+export const apiFetchPlanos = async (companyId?: string): Promise<Plano[]> => {
+  const query = companyId ? `?companyId=${companyId}` : '';
+  return apiCall(`/planos${query}`);
 };
 
 export const apiCreatePlano = async (plano: Omit<Plano, "id" | "createdAt">): Promise<Plano> => {

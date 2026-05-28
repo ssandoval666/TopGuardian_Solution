@@ -5,15 +5,16 @@ import {
   apiCreateRiskMatrix,
   apiSaveRiskMatrix,
   apiDeleteRiskMatrix,
+  apiFetchHazardCategories,
+  apiCreateHazardCategory,
+  apiDeleteHazardCategory,
   getRiskLevel,
-  HAZARD_CATEGORIES,
-  addHazardCategory,
-  removeHazardCategory,
   type RiskMatrix,
   type RiskCell,
   type Hazard,
   type Sector,
   type RiskLevel,
+  type HazardCategory,
 } from "@/services/riskMatrixApi";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -99,7 +100,7 @@ const RiskMatrixPage = () => {
   const [newSectorName, setNewSectorName] = useState("");
   const [showAddHazard, setShowAddHazard] = useState(false);
   const [newHazardNames, setNewHazardNames] = useState<string[]>([""]);
-  const [newHazardCategory, setNewHazardCategory] = useState(HAZARD_CATEGORIES[0]);
+  const [newHazardCategory, setNewHazardCategory] = useState("");
   const [showCellEditor, setShowCellEditor] = useState(false);
   const [editingCell, setEditingCell] = useState<{
     sectorId: string;
@@ -124,8 +125,8 @@ const RiskMatrixPage = () => {
 
   // Custom category
   const [newCustomCategory, setNewCustomCategory] = useState("");
-  const [showCategoryManager, setShowCategoryManager] = useState(false);
-  const [hazardCategories, setHazardCategories] = useState<string[]>(HAZARD_CATEGORIES);
+  const [hazardCategories, setHazardCategories] = useState<HazardCategory[]>([]);
+  const [showCategoryDialog, setShowCategoryDialog] = useState(false);
 
   // Load matrices for ALL user companies
   const loadMatrices = async () => {
@@ -146,8 +147,19 @@ const RiskMatrixPage = () => {
     }
   };
 
+  const loadCategories = async () => {
+    try {
+      const cats = await apiFetchHazardCategories();
+      setHazardCategories(cats);
+      if (cats.length > 0 && !newHazardCategory) setNewHazardCategory(cats[0].name);
+    } catch (error) {
+      console.error("Error cargando categorías:", error);
+    }
+  };
+
   useEffect(() => {
     loadMatrices();
+    loadCategories();
   }, []);
 
   const handleCreateMatrix = async () => {
@@ -201,16 +213,18 @@ const RiskMatrixPage = () => {
     toast({ title: "Nombre actualizado" });
   };
 
-  const handleAddCustomCategory = () => {
+  const handleAddCustomCategory = async () => {
     if (!newCustomCategory.trim()) return;
-    addHazardCategory(newCustomCategory.trim());
-    setHazardCategories([...HAZARD_CATEGORIES]);
-    setNewCustomCategory("");
-  };
-
-  const handleRemoveCategory = (cat: string) => {
-    removeHazardCategory(cat);
-    setHazardCategories([...HAZARD_CATEGORIES]);
+    try {
+      const created = await apiCreateHazardCategory({ name: newCustomCategory.trim() });
+      setHazardCategories((prev) => [...prev, created]);
+      setNewCustomCategory("");
+      setNewHazardCategory(created.name);
+      setShowCategoryDialog(false);
+      toast({ title: "Categoría creada exitosamente" });
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Error al crear la categoría", variant: "destructive" });
+    }
   };
 
   const handleDuplicate = async () => {
@@ -361,7 +375,7 @@ const RiskMatrixPage = () => {
 
   // Group hazards by category
   const groupedHazards = selectedMatrix
-    ? hazardCategories.filter((cat) =>
+    ? hazardCategories.map(c => c.name).filter((cat) =>
         (selectedMatrix.hazards || []).some((h) => h.category === cat)
       ).map((cat) => ({
         category: cat,
@@ -371,7 +385,6 @@ const RiskMatrixPage = () => {
 
   const allHazardsFlat = groupedHazards.flatMap((g) => g.hazards);
 
-  // Open new matrix dialog with pre-selected company
   const openNewMatrixDialog = () => {
     setNewMatrixCompanyId(selectedCompany?.id || companies[0]?.id || "");
     setNewMatrixName("");
@@ -429,7 +442,7 @@ const RiskMatrixPage = () => {
     doc.text("1-Insignificante  2-Menor  3-Moderado  4-Mayor  5-Catastrófico", 40, scaleY + 5);
 
     // Build table
-    const grouped = hazardCategories.filter((cat) =>
+    const grouped = hazardCategories.map(c => c.name).filter((cat) =>
       (matrix.hazards || []).some((h) => h.category === cat)
     ).map((cat) => ({
       category: cat,
@@ -933,46 +946,25 @@ const RiskMatrixPage = () => {
           <div className="space-y-4">
             <div>
               <Label>Categoría</Label>
-              <Select value={newHazardCategory} onValueChange={setNewHazardCategory}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {hazardCategories.map((cat) => (
-                    <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <div className="flex items-center gap-2 mt-2">
-                <Input
-                  value={newCustomCategory}
-                  onChange={(e) => setNewCustomCategory(e.target.value)}
-                  placeholder="Nueva categoría..."
-                  className="h-8 text-sm"
-                  onKeyDown={(e) => { if (e.key === "Enter") handleAddCustomCategory(); }}
-                />
-                <Button variant="outline" size="sm" onClick={handleAddCustomCategory} disabled={!newCustomCategory.trim()}>
-                  <Plus className="h-3 w-3 mr-1" /> Agregar
+              <div className="flex items-center gap-2">
+                <Select value={newHazardCategory} onValueChange={setNewHazardCategory}>
+                  <SelectTrigger className="flex-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {hazardCategories.map((cat) => (
+                      <SelectItem key={cat.id} value={cat.name}>{cat.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button variant="outline" size="icon" onClick={() => setShowCategoryDialog(true)} title="Nueva Categoría">
+                  <Plus className="h-4 w-4" />
                 </Button>
               </div>
-              {hazardCategories.length > 0 && (
-                <div className="flex flex-wrap gap-1 mt-2">
-                  {hazardCategories.map((cat) => (
-                    <Badge key={cat} variant="secondary" className="text-xs gap-1">
-                      {cat}
-                      <button onClick={() => handleRemoveCategory(cat)} className="ml-0.5 hover:text-destructive">
-                        <X className="h-3 w-3" />
-                      </button>
-                    </Badge>
-                  ))}
-                </div>
-              )}
             </div>
             <div className="space-y-2">
               <Label>Nombres de peligros (sub-columnas)</Label>
-              <p className="text-xs text-muted-foreground">
-                Agregue uno o más peligros que se mostrarán como sub-columnas bajo la categoría seleccionada.
-              </p>
+              <p className="text-xs text-muted-foreground">Escriba uno o más peligros para esta categoría.</p>
               {newHazardNames.map((name, idx) => (
                 <div key={idx} className="flex items-center gap-2">
                   <Input
@@ -1011,6 +1003,31 @@ const RiskMatrixPage = () => {
             <Button onClick={handleAddHazard} disabled={!newHazardNames.some((n) => n.trim())}>
               Agregar {newHazardNames.filter((n) => n.trim()).length > 1 ? `(${newHazardNames.filter((n) => n.trim()).length})` : ""}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Category Dialog */}
+      <Dialog open={showCategoryDialog} onOpenChange={(open) => { setShowCategoryDialog(open); if (!open) setNewCustomCategory(""); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Nueva Categoría de Peligro</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Nombre</Label>
+              <Input
+                value={newCustomCategory}
+                onChange={(e) => setNewCustomCategory(e.target.value)}
+                placeholder="Ej: Físico, Químico..."
+                onKeyDown={(e) => { if (e.key === "Enter") handleAddCustomCategory(); }}
+                autoFocus
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCategoryDialog(false)}>Cancelar</Button>
+            <Button onClick={handleAddCustomCategory} disabled={!newCustomCategory.trim()}>Guardar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

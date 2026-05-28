@@ -38,7 +38,17 @@ export const apiCall = async (endpoint: string, options: RequestInit = {}): Prom
     throw new Error(errorData.error || `HTTP ${response.status}`);
   }
 
-  return response.json();
+  if (response.status === 204) {
+    return;
+  }
+
+  const text = await response.text();
+  if (!text) return undefined;
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    return text; // Devuelve el texto plano si el backend no envía un JSON estricto
+  }
 };
 
 // ---- Auth endpoints ----
