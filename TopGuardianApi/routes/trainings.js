@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../database');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, authorizeRole } = require('../middleware/auth');
 
 // Helper para convertir el JSON array a Buffer de SQLite
 function getBuffer(data) {
@@ -132,7 +132,7 @@ router.get('/all', authenticateToken, async (req, res) => {
  *       201:
  *         description: Training created
  */
-router.post('/', authenticateToken, async (req, res) => {
+router.post('/', authenticateToken, authorizeRole(['Administrador', 'Editor']), async (req, res) => {
   try {
     const { title, description, instructor, date, duration, recurrence, pdfFileName, pdfData, thumbnailFileName, thumbnailData } = req.body;
     const result = await db.runAsync(
@@ -184,7 +184,7 @@ router.post('/', authenticateToken, async (req, res) => {
  *       200:
  *         description: Training updated
  */
-router.put('/:id', authenticateToken, async (req, res) => {
+router.put('/:id', authenticateToken, authorizeRole(['Administrador', 'Editor']), async (req, res) => {
   try {
     const { id } = req.params;
     const { title, description, instructor, date, duration, recurrence, pdfFileName, pdfData, thumbnailFileName, thumbnailData } = req.body;
@@ -229,7 +229,6 @@ router.get('/reports/registros', authenticateToken, async (req, res) => {
         ) AS company_trainings_list,
         etr.id AS record_id, 
         etr.completion_date, 
-        etr.signature_data,
         t.title AS training_title
       FROM companies c
       JOIN employees e ON e.company_id = c.id AND e.active = 1
@@ -259,7 +258,7 @@ router.get('/reports/registros', authenticateToken, async (req, res) => {
       const employee = company.employees.get(row.employee_id);
       
       if (row.record_id) {
-        employee.records.push({ id: String(row.record_id), completionDate: row.completion_date, trainingTitle: row.training_title, signatureData: row.signature_data ? Array.from(row.signature_data) : [] });
+        employee.records.push({ id: String(row.record_id), completionDate: row.completion_date, trainingTitle: row.training_title });
       }
     });
 
@@ -267,6 +266,35 @@ router.get('/reports/registros', authenticateToken, async (req, res) => {
       ...c, employees: Array.from(c.employees.values())
     }));
     res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * @swagger
+ * /trainings/reports/empleado/{employeeId}/firmas:
+ *   get:
+ *     summary: Get signature bytes for a specific employee
+ *     tags: [Trainings]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: employeeId
+ *         required: true
+ *         schema:
+ *           type: integer
+ */
+router.get('/reports/empleado/:employeeId/firmas', authenticateToken, async (req, res) => {
+  try {
+    const { employeeId } = req.params;
+    const rows = await db.allAsync('SELECT id, signature_data FROM employee_training_records WHERE employee_id = ? AND signature_data IS NOT NULL', [employeeId]);
+    const signatures = {};
+    rows.forEach(r => {
+      signatures[r.id] = Array.from(r.signature_data);
+    });
+    res.json(signatures);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -290,7 +318,7 @@ router.get('/reports/registros', authenticateToken, async (req, res) => {
  *       204:
  *         description: Training deleted
  */
-router.delete('/:id', authenticateToken, async (req, res) => {
+router.delete('/:id', authenticateToken, authorizeRole(['Administrador', 'Editor']), async (req, res) => {
   try {
     const { id } = req.params;
     await db.runAsync('DELETE FROM trainings WHERE id = ?', [id]);
@@ -391,7 +419,7 @@ router.get('/:id/questionnaire', authenticateToken, async (req, res) => {
  *         schema:
  *           type: integer
  */
-router.put('/:id/questionnaire', authenticateToken, async (req, res) => {
+router.put('/:id/questionnaire', authenticateToken, authorizeRole(['Administrador', 'Editor']), async (req, res) => {
   try {
     const { id } = req.params;
     const { minPassingScore, questions } = req.body;
@@ -505,7 +533,7 @@ router.get('/company/:companyId', authenticateToken, async (req, res) => {
  *       201:
  *         description: Training assigned to company
  */
-router.post('/company', authenticateToken, async (req, res) => {
+router.post('/company', authenticateToken, authorizeRole(['Administrador', 'Editor']), async (req, res) => {
   try {
     const { companyId, trainingId, assignedDate, recurrence } = req.body;
     const result = await db.runAsync(
@@ -554,7 +582,7 @@ router.post('/company', authenticateToken, async (req, res) => {
  *       200:
  *         description: Training marked as completed
  */
-router.put('/company/:id/complete', authenticateToken, async (req, res) => {
+router.put('/company/:id/complete', authenticateToken, authorizeRole(['Administrador', 'Editor']), async (req, res) => {
   try {
     const { id } = req.params;
     const { completedDate } = req.body;
@@ -612,7 +640,7 @@ router.put('/company/:id/complete', authenticateToken, async (req, res) => {
  *       204:
  *         description: Training unassigned
  */
-router.delete('/company/:id', authenticateToken, async (req, res) => {
+router.delete('/company/:id', authenticateToken, authorizeRole(['Administrador', 'Editor']), async (req, res) => {
   try {
     const { id } = req.params;
     await db.runAsync('DELETE FROM company_trainings WHERE id = ?', [id]);
@@ -712,7 +740,7 @@ router.get('/employee/:employeeId', authenticateToken, async (req, res) => {
  *       201:
  *         description: Training assigned to employee
  */
-router.post('/employee', authenticateToken, async (req, res) => {
+router.post('/employee', authenticateToken, authorizeRole(['Administrador', 'Editor']), async (req, res) => {
   try {
     const { employeeId, trainingId, assignedDate, recurrence } = req.body;
     const result = await db.runAsync(
@@ -760,7 +788,7 @@ router.post('/employee', authenticateToken, async (req, res) => {
  *       200:
  *         description: Training marked as completed
  */
-router.put('/employee/:id/complete', authenticateToken, async (req, res) => {
+router.put('/employee/:id/complete', authenticateToken, authorizeRole(['Administrador', 'Editor']), async (req, res) => {
   try {
     const { id } = req.params;
     const { completedDate } = req.body;
@@ -817,7 +845,7 @@ router.put('/employee/:id/complete', authenticateToken, async (req, res) => {
  *       204:
  *         description: Training unassigned
  */
-router.delete('/employee/:id', authenticateToken, async (req, res) => {
+router.delete('/employee/:id', authenticateToken, authorizeRole(['Administrador', 'Editor']), async (req, res) => {
   try {
     const { id } = req.params;
     await db.runAsync('DELETE FROM employee_trainings WHERE id = ?', [id]);

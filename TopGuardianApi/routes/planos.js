@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../database');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, authorizeRole } = require('../middleware/auth');
 
 /**
  * @swagger
@@ -72,7 +72,7 @@ router.get('/', authenticateToken, async (req, res) => {
  *       201:
  *         description: Plano created
  */
-router.post('/', authenticateToken, async (req, res) => {
+router.post('/', authenticateToken, authorizeRole(['Administrador', 'Editor']), async (req, res) => {
   try {
     const { name, companyId, fileName, fileData } = req.body;
     // Convert base64 to buffer
@@ -122,7 +122,7 @@ router.post('/', authenticateToken, async (req, res) => {
  *       200:
  *         description: Plano updated
  */
-router.put('/:id', authenticateToken, async (req, res) => {
+router.put('/:id', authenticateToken, authorizeRole(['Administrador', 'Editor']), async (req, res) => {
   try {
     const { id } = req.params;
     const { name, fileName, fileData } = req.body;
@@ -216,7 +216,7 @@ router.get('/:id/download', authenticateToken, async (req, res) => {
  *       204:
  *         description: Plano deleted
  */
-router.delete('/:id', authenticateToken, async (req, res) => {
+router.delete('/:id', authenticateToken, authorizeRole(['Administrador', 'Editor']), async (req, res) => {
   try {
     const { id } = req.params;
     await db.runAsync('DELETE FROM planos WHERE id = ?', [id]);

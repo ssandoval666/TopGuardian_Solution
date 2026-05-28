@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { apiFetchTrainingRecordsReport, type CompanyReport, type EmployeeReport } from "@/services/trainingApi";
+import { apiFetchTrainingRecordsReport, apiFetchEmployeeSignatures, type CompanyReport, type EmployeeReport } from "@/services/trainingApi";
 import { ChevronDown, ChevronRight, FileText, Loader2, Building2, User, Download, GraduationCap, X } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,36 @@ const toBase64DataUri = (byteArray: number[]) => {
     binary += String.fromCharCode(byteArray[i]);
   }
   return 'data:image/png;base64,' + window.btoa(binary);
+};
+
+// Componente de gráfico circular para mostrar el porcentaje
+const CircularProgress = ({ value }: { value: number }) => {
+  const radius = 14;
+  const circumference = 2 * Math.PI * radius;
+  const strokeDashoffset = circumference - (value / 100) * circumference;
+  
+  let colorClass = "text-green-500";
+  if (value < 50) colorClass = "text-red-500";
+  else if (value < 80) colorClass = "text-amber-500";
+
+  return (
+    <div className="relative flex items-center justify-center w-10 h-10 ml-2 shrink-0" title={`Cumplimiento general: ${value}%`}>
+      <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+        <circle cx="18" cy="18" r={radius} stroke="currentColor" strokeWidth="2.5" fill="transparent" className="text-muted/30" />
+        <circle
+          cx="18" cy="18" r={radius}
+          stroke="currentColor" strokeWidth="2.5" fill="transparent"
+          strokeDasharray={circumference}
+          strokeDashoffset={strokeDashoffset}
+          className={`${colorClass} transition-all duration-1000 ease-out`}
+          strokeLinecap="round"
+        />
+      </svg>
+      <span className="absolute text-[10px] font-bold text-foreground">
+        {value}%
+      </span>
+    </div>
+  );
 };
 
 export default function RegistroCapacitacionesPage() {
@@ -49,9 +79,13 @@ export default function RegistroCapacitacionesPage() {
     const toastId = toast.loading("Procesando firmas y generando PDF...");
 
     try {
+      // Carga perezosa (Lazy Loading): Solo descargamos las firmas pesadas para la persona solicitada al momento de generar el PDF
+      const signatures = await apiFetchEmployeeSignatures(employee.id);
+
       // Filtro asíncrono para limpiar fondos oscuros de las firmas antiguas en memoria
-      const processSignature = (byteArray: number[]): Promise<string | null> => {
+      const processSignature = (byteArray: number[] | undefined): Promise<string | null> => {
         return new Promise((resolve) => {
+          if (!byteArray) return resolve(null);
           const uri = toBase64DataUri(byteArray);
           if (!uri) return resolve(null);
           const img = new Image();
@@ -82,7 +116,7 @@ export default function RegistroCapacitacionesPage() {
         });
       };
 
-      const processedSignatures = await Promise.all(employee.records.map(r => processSignature(r.signatureData)));
+      const processedSignatures = await Promise.all(employee.records.map(r => processSignature(signatures[r.id])));
 
       const drawPDF = (img: HTMLImageElement | null) => {
         const doc = new jsPDF();
@@ -172,13 +206,20 @@ export default function RegistroCapacitacionesPage() {
         </Card>
       ) : (
         <div className="space-y-4">
-          {companies.map(company => (
+          {companies.map(company => {
+            // Calcular porcentaje global de la empresa
+            const totalRequired = company.totalTrainings * company.employees.length;
+            const totalCompleted = company.employees.reduce((acc, emp) => acc + new Set(emp.records.map(r => r.trainingTitle)).size, 0);
+            const companyPct = totalRequired > 0 ? Math.min(100, Math.round((totalCompleted / totalRequired) * 100)) : 0;
+
+            return (
             <div key={company.id} className="border border-border rounded-lg bg-card">
               <div onClick={() => toggleCompany(company.id)} className={`w-full flex items-center justify-between p-4 hover:bg-muted/50 transition-colors cursor-pointer ${expanded.has(company.id) ? 'rounded-t-lg' : 'rounded-lg'}`}>
                 <div className="flex items-center gap-3">
                   {expanded.has(company.id) ? <ChevronDown className="h-5 w-5 text-muted-foreground" /> : <ChevronRight className="h-5 w-5 text-muted-foreground" />}
                   <Building2 className="h-5 w-5 text-primary" />
                   <span className="font-semibold text-foreground text-lg">{company.name}</span>
+                  <CircularProgress value={companyPct} />
                 </div>
                 <div className="flex items-center gap-4">
                   <span className="text-sm text-muted-foreground hidden sm:inline">{company.employees.length} empleados</span>
@@ -271,7 +312,8 @@ export default function RegistroCapacitacionesPage() {
                 </div>
               )}
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

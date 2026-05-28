@@ -82,7 +82,7 @@ export interface TrainingRecordReport {
   id: string;
   completionDate: string;
   trainingTitle: string;
-  signatureData: number[];
+  signatureData?: number[];
 }
 
 export interface EmployeeReport {
@@ -142,6 +142,10 @@ export const apiFetchTrainingList = async (params: TrainingListParams): Promise<
 
 export const apiFetchTrainingRecordsReport = async (): Promise<CompanyReport[]> => {
   return apiCall('/trainings/reports/registros');
+};
+
+export const apiFetchEmployeeSignatures = async (employeeId: string): Promise<Record<string, number[]>> => {
+  return apiCall(`/trainings/reports/empleado/${employeeId}/firmas`);
 };
 
 export const apiGetTrainingQuestionnaire = async (id: string): Promise<TrainingQuestionnaire> => {
