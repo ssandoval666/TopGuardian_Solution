@@ -368,7 +368,8 @@ function insertMenu() {
     { key: 'users', name: 'Usuarios', icon: 'Users', path: '/dashboard/users', parent_key: 'settings', roles: 'admin,manager' },
     { key: 'trainings', name: 'Capacitaciones', icon: 'GraduationCap', path: '/dashboard/trainings', parent_key: 'settings', roles: 'admin,manager' },
     { key: 'checklist-items', name: 'Items Check List', icon: 'ClipboardList', path: '/dashboard/checklist-items', parent_key: 'settings', roles: 'admin,manager' },
-    { key: 'calendar', name: 'Calendario', icon: 'CalendarDays', path: '/dashboard/calendario', parent_key: 'settings', roles: 'admin,manager,supervisor,employee,viewer' }
+    { key: 'calendar', name: 'Calendario', icon: 'CalendarDays', path: '/dashboard/calendario', parent_key: 'settings', roles: 'admin,manager,supervisor,employee,viewer' },
+    { key: 'epp', name: 'Elementos de Protección Personal', icon: 'HardHat', path: '/dashboard/epp', parent_key: 'settings', roles: 'admin' }
   ];
 
   let menuCount = 0;

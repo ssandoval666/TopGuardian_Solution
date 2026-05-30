@@ -23,6 +23,7 @@ import NominaEmpleadosPage from "./pages/NominaEmpleadosPage";
 import DashboardLayout from "./components/DashboardLayout";
 import ProtectedRoute from "./components/ProtectedRoute";
 import NotFound from "./pages/NotFound";
+import EppPage from "./pages/EppPage";
 
 
 const queryClient = new QueryClient();
@@ -63,6 +64,7 @@ const App = () => (
                 <Route path="sesiones-activas" element={<SesionesActivasPage />} />
                 <Route path="peligro-categorias" element={<PeligroCategoriasPage />} />
                 <Route path="nomina-empleados" element={<NominaEmpleadosPage />} />
+                <Route path="epp" element={<EppPage />} />
               </Route>
               <Route path="*" element={<NotFound />} />
             </Routes>

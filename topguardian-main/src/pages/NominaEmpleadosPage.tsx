@@ -12,9 +12,11 @@ import {
 import {
   Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious,
 } from "@/components/ui/pagination";
-import { Search, Loader2, Users } from "lucide-react";
+import { Search, Loader2, Users, HardHat, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
+import EmployeeEppsDialog from "@/components/EmployeeEppsDialog";
+import EmployeeEppsPdfDialog from "@/components/EmployeeEppsPdfDialog";
 
 const PAGE_SIZE = 10;
 
@@ -25,6 +27,9 @@ export default function NominaEmpleadosPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [eppDialogOpen, setEppDialogOpen] = useState(false);
+  const [eppPdfDialogOpen, setEppPdfDialogOpen] = useState(false);
+  const [selectedEmployeeForEpp, setSelectedEmployeeForEpp] = useState<Employee | null>(null);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -107,18 +112,19 @@ export default function NominaEmpleadosPage() {
                 <TableHead className="hidden md:table-cell">Puesto / Depto</TableHead>
                 <TableHead className="hidden lg:table-cell">Contacto</TableHead>
                 <TableHead className="text-center">Estado</TableHead>
+                <TableHead className="text-right">Acciones</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-10">
+                  <TableCell colSpan={6} className="text-center py-10">
                     <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
                   </TableCell>
                 </TableRow>
               ) : employees.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-10 text-muted-foreground">
+                  <TableCell colSpan={6} className="text-center py-10 text-muted-foreground">
                     No se encontraron empleados
                   </TableCell>
                 </TableRow>
@@ -148,6 +154,32 @@ export default function NominaEmpleadosPage() {
                         {emp.active ? "Activo" : "Inactivo"}
                       </span>
                     </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-1">
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          title="Seguimiento de Entrega de Epps"
+                          onClick={() => {
+                            setSelectedEmployeeForEpp(emp);
+                            setEppPdfDialogOpen(true);
+                          }}
+                        >
+                          <FileText className="h-4 w-4 text-muted-foreground" />
+                        </Button>
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          title="Asignar EPP"
+                          onClick={() => {
+                            setSelectedEmployeeForEpp(emp);
+                            setEppDialogOpen(true);
+                          }}
+                        >
+                          <HardHat className="h-4 w-4 text-primary" />
+                        </Button>
+                      </div>
+                    </TableCell>
                   </TableRow>
                 ))
               )}
@@ -175,6 +207,22 @@ export default function NominaEmpleadosPage() {
           </PaginationContent>
         </Pagination>
       )}
+
+      <EmployeeEppsDialog
+        open={eppDialogOpen}
+        onOpenChange={setEppDialogOpen}
+        employeeId={selectedEmployeeForEpp ? selectedEmployeeForEpp.id : null}
+        employeeName={selectedEmployeeForEpp ? `${selectedEmployeeForEpp.firstName} ${selectedEmployeeForEpp.lastName}` : ""}
+      />
+
+      <EmployeeEppsPdfDialog
+        open={eppPdfDialogOpen}
+        onOpenChange={setEppPdfDialogOpen}
+        employeeId={selectedEmployeeForEpp ? selectedEmployeeForEpp.id : null}
+        employeeName={selectedEmployeeForEpp ? `${selectedEmployeeForEpp.firstName} ${selectedEmployeeForEpp.lastName}` : ""}
+        employeeDocument={selectedEmployeeForEpp?.documentNumber || ""}
+        companyName={selectedCompany.name}
+      />
     </div>
   );
 }

@@ -260,6 +260,23 @@ const initDatabase = () => {
         FOREIGN KEY (user_id) REFERENCES users (id),
         UNIQUE(user_id)
       )`,
+      `CREATE TABLE IF NOT EXISTS epps (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT UNIQUE NOT NULL,
+        description TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`,
+      `CREATE TABLE IF NOT EXISTS employee_epps (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        employee_id INTEGER NOT NULL,
+        epp_id INTEGER NOT NULL,
+        delivery_date TEXT NOT NULL,
+        delivered_by_user_id INTEGER,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (employee_id) REFERENCES employees (id),
+        FOREIGN KEY (epp_id) REFERENCES epps (id),
+        FOREIGN KEY (delivered_by_user_id) REFERENCES users (id)
+      )`,
       // Índices para mejorar drásticamente el rendimiento de lectura del chat
       `CREATE INDEX IF NOT EXISTS idx_chat_messages_users ON chat_messages(from_user_id, to_user_id)`,
       `CREATE INDEX IF NOT EXISTS idx_chat_messages_unread ON chat_messages(to_user_id, read_status)`,
@@ -270,6 +287,7 @@ const initDatabase = () => {
       `CREATE INDEX IF NOT EXISTS idx_employees_company ON employees(company_id)`,
       `CREATE INDEX IF NOT EXISTS idx_employee_trainings_emp ON employee_trainings(employee_id)`,
       `CREATE INDEX IF NOT EXISTS idx_employee_records_emp ON employee_training_records(employee_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_employee_epps_emp ON employee_epps(employee_id)`,
       `CREATE INDEX IF NOT EXISTS idx_planos_company ON planos(company_id)`,
       `CREATE INDEX IF NOT EXISTS idx_checklists_company ON checklist_visits(company_id)`
     ];
@@ -277,24 +295,26 @@ const initDatabase = () => {
     let completed = 0;
     const total = tables.length;
 
-    tables.forEach(sql => {
-      db.run(sql, (err) => {
-        if (err) {
-          console.error('Error creating table:', err);
-          reject(err);
-          return;
-        }
-        completed++;
-        if (completed === total) {
-          // Solo insertamos los datos falsos y borramos las tablas si estamos en modo desarrollo
-          if (process.env.NODE_ENV === 'development') {
-            console.log('Entorno de desarrollo detectado. Insertando datos de prueba...');
-            insertMockData().then(resolve).catch(reject);
-          } else {
-            console.log('Entorno de producción. Se omiten los datos de prueba y se conservan los datos reales.');
-            resolve();
+    db.serialize(() => {
+      tables.forEach(sql => {
+        db.run(sql, (err) => {
+          if (err) {
+            console.error('Error creating table:', err);
+            reject(err);
+            return;
           }
-        }
+          completed++;
+          if (completed === total) {
+            // Solo insertamos los datos falsos y borramos las tablas si estamos en modo desarrollo
+            if (process.env.NODE_ENV === 'development') {
+              console.log('Entorno de desarrollo detectado. Insertando datos de prueba...');
+              insertMockData().then(resolve).catch(reject);
+            } else {
+              console.log('Entorno de producción. Se omiten los datos de prueba y se conservan los datos reales.');
+              resolve();
+            }
+          }
+        });
       });
     });
   });
@@ -304,7 +324,7 @@ const insertMockData = async () => {
   try {
     // Clear existing data to avoid duplicates
     const clearTables = async () => {
-      const tablesToClear = ['users', 'companies', 'company_users', 'employees', 'trainings', 'training_questionnaires', 'company_trainings', 'employee_trainings', 'employee_training_records', 'planos', 'checklist_items', 'checklist_visits', 'checklist_entries', 'risk_matrices', 'risk_matrix_sectors', 'risk_matrix_hazards', 'risk_matrix_cells', 'chat_messages', 'menus', 'roles', 'hazard_categories'];
+      const tablesToClear = ['users', 'companies', 'company_users', 'employees', 'trainings', 'training_questionnaires', 'company_trainings', 'employee_trainings', 'employee_training_records', 'planos', 'checklist_items', 'checklist_visits', 'checklist_entries', 'risk_matrices', 'risk_matrix_sectors', 'risk_matrix_hazards', 'risk_matrix_cells', 'chat_messages', 'appointments', 'menus', 'roles', 'hazard_categories', 'epps', 'employee_epps'];
       for (const table of tablesToClear) {
         await new Promise((resolve, reject) => {
           db.run(`DELETE FROM ${table}`, (err) => {
@@ -440,6 +460,23 @@ const insertMockData = async () => {
       });
     }
 
+    // EPPs
+    const epps = [
+      ['Guantes', 'Protección para manos'],
+      ['Ropa', 'Indumentaria de protección'],
+      ['Zapatos', 'Calzado de seguridad'],
+      ['Anteojos', 'Protección ocular'],
+      ['Proteccion auditiva', 'Protectores auditivos']
+    ];
+    for (const epp of epps) {
+      await new Promise((resolve, reject) => {
+        db.run('INSERT INTO epps (name, description) VALUES (?, ?)', epp, function(err) {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+    }
+
     // Menus
     const menuData = [
       { key: 'dash', name: 'Dashboard', icon: 'LayoutDashboard', path: '/dashboard', parent_key: null, roles: 'Administrador,Editor,Visualizador' },
@@ -455,7 +492,8 @@ const insertMockData = async () => {
       { key: 'menu', name: 'Menu', icon: 'ClipboardList', path: '/dashboard/menu', parent_key: 'settings', roles: 'Administrador,Editor,Visualizador' },
       { key: 'trainings', name: 'Capacitaciones', icon: 'GraduationCap', path: '/dashboard/trainings', parent_key: 'settings', roles: 'Administrador,Editor,Visualizador' },
       { key: 'checklist-items', name: 'Items Check List', icon: 'ClipboardList', path: '/dashboard/checklist-items', parent_key: 'settings', roles: 'Administrador,Editor,Visualizador' },
-      { key: 'peligro-categorias', name: 'Categorías de Peligro', icon: 'AlertTriangle', path: '/dashboard/peligro-categorias', parent_key: 'settings', roles: 'Administrador,Editor,Visualizador' }
+      { key: 'peligro-categorias', name: 'Categorías de Peligro', icon: 'AlertTriangle', path: '/dashboard/peligro-categorias', parent_key: 'settings', roles: 'Administrador,Editor,Visualizador' },
+      { key: 'epp', name: 'Elementos de Protección Personal', icon: 'HardHat', path: '/dashboard/epp', parent_key: 'settings', roles: 'Administrador' }
     ];
 
     let orderIndex = 0;
@@ -536,6 +574,8 @@ const chatRoutes = require('./routes/chat');
 const rolesRoutes = require('./routes/roles');
 const hazardCategoriesRoutes = require('./routes/hazardCategories');
 const calendarRoutes = require('./routes/calendar');
+const eppRoutes = require('./routes/epp');
+const employeeEppsRoutes = require('./routes/employeeEpps');
 
 // Override para asegurar que el chat muestre TODOS los usuarios reales de la DB sin hardcode
 app.get('/chat/users', (req, res) => {
@@ -564,6 +604,8 @@ app.use('/chat', chatRoutes);
 app.use('/roles', rolesRoutes);
 app.use('/hazard-categories', hazardCategoriesRoutes);
 app.use('/calendar', calendarRoutes);
+app.use('/epp', eppRoutes);
+app.use('/employee-epps', employeeEppsRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
