@@ -272,6 +272,8 @@ const initDatabase = () => {
         epp_id INTEGER NOT NULL,
         delivery_date TEXT NOT NULL,
         delivered_by_user_id INTEGER,
+        quantity INTEGER DEFAULT 1,
+        signature_data BLOB,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (employee_id) REFERENCES employees (id),
         FOREIGN KEY (epp_id) REFERENCES epps (id),

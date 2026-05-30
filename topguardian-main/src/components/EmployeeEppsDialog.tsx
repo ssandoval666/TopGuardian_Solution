@@ -1,11 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, Trash2, Plus, HardHat } from "lucide-react";
+import { Loader2, Trash2, Plus, HardHat, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { apiCall } from "@/services/api";
 
@@ -22,6 +22,11 @@ interface Epp {
   name: string;
 }
 
+interface SelectedEpp {
+  id: number;
+  quantity: number;
+}
+
 interface EmployeeEppsDialogProps {
   employeeId: string | number | null;
   employeeName: string;
@@ -36,8 +41,12 @@ export default function EmployeeEppsDialog({ employeeId, employeeName, open, onO
   
   const [isAssigning, setIsAssigning] = useState(false);
   const [showAssignForm, setShowAssignForm] = useState(false);
-  const [selectedEpps, setSelectedEpps] = useState<number[]>([]);
+  const [selectedEpps, setSelectedEpps] = useState<SelectedEpp[]>([]);
   const [deliveryDate, setDeliveryDate] = useState("");
+
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [hasSignature, setHasSignature] = useState(false);
 
   const loadData = async () => {
     if (!employeeId) return;
@@ -65,6 +74,72 @@ export default function EmployeeEppsDialog({ employeeId, employeeName, open, onO
     }
   }, [open, employeeId]);
 
+  useEffect(() => {
+    if (showAssignForm) {
+      setTimeout(clearSignature, 50);
+    }
+  }, [showAssignForm]);
+
+  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    setIsDrawing(true);
+    setHasSignature(true);
+    draw(e);
+  };
+
+  const stopDrawing = () => {
+    setIsDrawing(false);
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext("2d");
+      ctx?.beginPath();
+    }
+  };
+
+  const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    if (!isDrawing) return;
+    e.preventDefault();
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+
+    let clientX, clientY;
+    
+    if ('touches' in e) {
+      clientX = e.touches[0].clientX;
+      clientY = e.touches[0].clientY;
+    } else {
+      clientX = e.clientX;
+      clientY = e.clientY;
+    }
+
+    const x = (clientX - rect.left) * scaleX;
+    const y = (clientY - rect.top) * scaleY;
+
+    ctx.lineWidth = 2;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = "#000";
+
+    ctx.lineTo(x, y);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+  };
+
+  const clearSignature = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    ctx?.clearRect(0, 0, canvas.width, canvas.height);
+    setHasSignature(false);
+  };
+
   const handleAssign = async () => {
     if (selectedEpps.length === 0) {
       toast.error("Seleccione al menos un EPP");
@@ -74,11 +149,29 @@ export default function EmployeeEppsDialog({ employeeId, employeeName, open, onO
       toast.error("La fecha de entrega es requerida");
       return;
     }
+    if (!hasSignature) {
+      toast.error("La firma del empleado es requerida");
+      return;
+    }
+
+    const canvas = canvasRef.current;
+    let signatureData: number[] = [];
+    if (canvas) {
+      const dataUrl = canvas.toDataURL("image/png");
+      const base64 = dataUrl.split(",")[1];
+      const binaryStr = window.atob(base64);
+      const byteArray = new Uint8Array(binaryStr.length);
+      for (let i = 0; i < binaryStr.length; i++) {
+        byteArray[i] = binaryStr.charCodeAt(i);
+      }
+      signatureData = Array.from(byteArray);
+    }
+
     setIsAssigning(true);
     try {
       await apiCall(`/employee-epps`, {
         method: "POST",
-        body: JSON.stringify({ employeeId, eppIds: selectedEpps, deliveryDate })
+        body: JSON.stringify({ employeeId, epps: selectedEpps, deliveryDate, signatureData })
       });
       toast.success("EPPs asignados exitosamente");
       setShowAssignForm(false);
@@ -184,22 +277,67 @@ export default function EmployeeEppsDialog({ employeeId, employeeName, open, onO
             </div>
             <div>
               <Label className="mb-2 block">Seleccionar Elementos</Label>
-              <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto p-2 border rounded-md bg-background">
-                {availableEpps.map(epp => (
-                  <div key={epp.id} className="flex items-center space-x-2 p-1">
-                    <Checkbox 
-                      id={`epp-${epp.id}`} 
-                      checked={selectedEpps.includes(epp.id)}
-                      onCheckedChange={(checked) => {
-                        if (checked) setSelectedEpps([...selectedEpps, epp.id]);
-                        else setSelectedEpps(selectedEpps.filter(id => id !== epp.id));
-                      }}
-                    />
-                    <Label htmlFor={`epp-${epp.id}`} className="font-normal cursor-pointer text-sm flex-1">
-                      {epp.name}
-                    </Label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-40 overflow-y-auto p-2 border rounded-md bg-background">
+                {availableEpps.map(epp => {
+                  const selectedItem = selectedEpps.find(s => s.id === epp.id);
+                  const isSelected = !!selectedItem;
+                  return (
+                    <div key={epp.id} className="flex items-center space-x-2 p-1">
+                      <Checkbox 
+                        id={`epp-${epp.id}`} 
+                        checked={isSelected}
+                        onCheckedChange={(checked) => {
+                          if (checked) setSelectedEpps([...selectedEpps, { id: epp.id, quantity: 1 }]);
+                          else setSelectedEpps(selectedEpps.filter(s => s.id !== epp.id));
+                        }}
+                      />
+                      <Label htmlFor={`epp-${epp.id}`} className="font-normal cursor-pointer text-sm flex-1 truncate">
+                        {epp.name}
+                      </Label>
+                      {isSelected && (
+                        <Input 
+                          type="number"
+                          min="1"
+                          className="w-16 h-7 text-xs px-2 ml-auto"
+                          value={selectedItem.quantity}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value) || 1;
+                            setSelectedEpps(selectedEpps.map(s => s.id === epp.id ? { ...s, quantity: val } : s));
+                          }}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div>
+              <div className="flex justify-between items-center mb-2">
+                <Label className="block">Firma del Empleado</Label>
+                <Button variant="ghost" size="sm" className="h-6 text-xs px-2" onClick={clearSignature}>
+                  <RotateCcw className="h-3 w-3 mr-1" /> Limpiar
+                </Button>
+              </div>
+              <div className="border rounded-md bg-background overflow-hidden relative touch-none">
+                <canvas
+                  ref={canvasRef}
+                  width={400}
+                  height={150}
+                  className="w-full h-[150px] cursor-crosshair"
+                  onMouseDown={startDrawing}
+                  onMouseMove={draw}
+                  onMouseUp={stopDrawing}
+                  onMouseLeave={stopDrawing}
+                  onTouchStart={startDrawing}
+                  onTouchMove={draw}
+                  onTouchEnd={stopDrawing}
+                />
+                {!hasSignature && (
+                  <div className="absolute inset-0 pointer-events-none flex items-center justify-center text-muted-foreground/30 opacity-50">
+                    <span className="text-sm select-none">Firme aquí</span>
                   </div>
-                ))}
+                )}
               </div>
             </div>
           </div>

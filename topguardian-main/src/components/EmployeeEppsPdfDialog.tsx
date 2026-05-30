@@ -1,10 +1,10 @@
 import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Loader2, FileText } from "lucide-react";
+import { Loader2, FileText, Download } from "lucide-react";
 import { toast } from "sonner";
 import { apiCall } from "@/services/api";
-import { Document, Page, Text, View, StyleSheet, PDFViewer, Image } from "@react-pdf/renderer";
+import { Document, Page, Text, View, StyleSheet, PDFViewer, Image, PDFDownloadLink } from "@react-pdf/renderer";
 import shieldLogo from "@/assets/shield-logo.png";
 
 interface AssignedEpp {
@@ -14,6 +14,8 @@ interface AssignedEpp {
   epp_name: string;
   delivery_date: string;
   delivered_by_user_name: string | null;
+  quantity: number;
+  signature_data: any;
 }
 
 interface EmployeeEppsPdfDialogProps {
@@ -25,6 +27,17 @@ interface EmployeeEppsPdfDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
+const toBase64DataUri = (signatureData: any) => {
+  const byteArray = signatureData?.data || signatureData;
+  if (!byteArray || !Array.isArray(byteArray) || byteArray.length === 0) return null;
+  
+  let binary = '';
+  for (let i = 0; i < byteArray.length; i++) {
+    binary += String.fromCharCode(byteArray[i]);
+  }
+  return 'data:image/png;base64,' + window.btoa(binary);
+};
+
 const styles = StyleSheet.create({
   page: { padding: 40, fontSize: 12 },
   headerSection: { marginBottom: 20 },
@@ -34,8 +47,19 @@ const styles = StyleSheet.create({
   infoLine: { fontSize: 12, color: '#111827', marginBottom: 5 },
   table: { display: "flex", width: "auto", borderStyle: "solid", borderWidth: 1, borderRightWidth: 0, borderBottomWidth: 0, marginTop: 10 },
   tableRow: { margin: "auto", flexDirection: "row" },
-  tableColHeader: { width: "33.33%", borderStyle: "solid", borderBottomWidth: 1, borderRightWidth: 1, backgroundColor: '#f3f4f6', padding: 8 },
-  tableCol: { width: "33.33%", borderStyle: "solid", borderBottomWidth: 1, borderRightWidth: 1, padding: 8 },
+  
+  tableColHeaderDate: { width: "18%", borderStyle: "solid", borderBottomWidth: 1, borderRightWidth: 1, backgroundColor: '#f3f4f6', padding: 6 },
+  tableColHeaderEpp: { width: "27%", borderStyle: "solid", borderBottomWidth: 1, borderRightWidth: 1, backgroundColor: '#f3f4f6', padding: 6 },
+  tableColHeaderQty: { width: "10%", borderStyle: "solid", borderBottomWidth: 1, borderRightWidth: 1, backgroundColor: '#f3f4f6', padding: 6 },
+  tableColHeaderUser: { width: "20%", borderStyle: "solid", borderBottomWidth: 1, borderRightWidth: 1, backgroundColor: '#f3f4f6', padding: 6 },
+  tableColHeaderSig: { width: "25%", borderStyle: "solid", borderBottomWidth: 1, borderRightWidth: 1, backgroundColor: '#f3f4f6', padding: 6 },
+
+  tableColDate: { width: "18%", borderStyle: "solid", borderBottomWidth: 1, borderRightWidth: 1, padding: 6, justifyContent: 'center' },
+  tableColEpp: { width: "27%", borderStyle: "solid", borderBottomWidth: 1, borderRightWidth: 1, padding: 6, justifyContent: 'center' },
+  tableColQty: { width: "10%", borderStyle: "solid", borderBottomWidth: 1, borderRightWidth: 1, padding: 6, justifyContent: 'center' },
+  tableColUser: { width: "20%", borderStyle: "solid", borderBottomWidth: 1, borderRightWidth: 1, padding: 6, justifyContent: 'center' },
+  tableColSig: { width: "25%", borderStyle: "solid", borderBottomWidth: 1, borderRightWidth: 1, padding: 2, justifyContent: 'center', alignItems: 'center' },
+
   tableCellHeader: { fontSize: 10, fontWeight: 'bold' },
   tableCell: { fontSize: 10 }
 });
@@ -54,17 +78,30 @@ const EppPdfDocument = ({ employeeName, employeeDocument, companyName, data }: {
       </View>
       <View style={styles.table}>
         <View style={styles.tableRow}>
-          <View style={styles.tableColHeader}><Text style={styles.tableCellHeader}>Fecha de Entrega</Text></View>
-          <View style={styles.tableColHeader}><Text style={styles.tableCellHeader}>Elemento (EPP)</Text></View>
-          <View style={styles.tableColHeader}><Text style={styles.tableCellHeader}>Entregado por</Text></View>
+          <View style={styles.tableColHeaderDate}><Text style={styles.tableCellHeader}>Fecha</Text></View>
+          <View style={styles.tableColHeaderEpp}><Text style={styles.tableCellHeader}>Elemento (EPP)</Text></View>
+          <View style={styles.tableColHeaderQty}><Text style={styles.tableCellHeader}>Cant.</Text></View>
+          <View style={styles.tableColHeaderUser}><Text style={styles.tableCellHeader}>Entregado por</Text></View>
+          <View style={styles.tableColHeaderSig}><Text style={styles.tableCellHeader}>Firma Empleado</Text></View>
         </View>
-        {data.map((row, i) => (
-          <View key={i} style={styles.tableRow}>
-            <View style={styles.tableCol}><Text style={styles.tableCell}>{row.delivery_date}</Text></View>
-            <View style={styles.tableCol}><Text style={styles.tableCell}>{row.epp_name}</Text></View>
-            <View style={styles.tableCol}><Text style={styles.tableCell}>{row.delivered_by_user_name || 'Sistema'}</Text></View>
-          </View>
-        ))}
+        {data.map((row, i) => {
+          const sigUri = toBase64DataUri(row.signature_data);
+          return (
+            <View key={i} style={styles.tableRow}>
+              <View style={styles.tableColDate}><Text style={styles.tableCell}>{row.delivery_date}</Text></View>
+              <View style={styles.tableColEpp}><Text style={styles.tableCell}>{row.epp_name}</Text></View>
+              <View style={styles.tableColQty}><Text style={styles.tableCell}>{row.quantity || 1}</Text></View>
+              <View style={styles.tableColUser}><Text style={styles.tableCell}>{row.delivered_by_user_name || 'Sistema'}</Text></View>
+              <View style={styles.tableColSig}>
+                {sigUri ? (
+                  <Image src={sigUri} style={{ height: 20, width: "auto", objectFit: 'contain' }} />
+                ) : (
+                  <Text style={styles.tableCell}>-</Text>
+                )}
+              </View>
+            </View>
+          );
+        })}
       </View>
     </Page>
   </Document>
@@ -108,7 +145,7 @@ export default function EmployeeEppsPdfDialog({ employeeId, employeeName, employ
         ) : (
           <div className="flex-1 bg-muted/30 rounded-md overflow-hidden border mt-2">
             {data.length > 0 ? (
-              <PDFViewer width="100%" height="100%" className="border-0">
+              <PDFViewer width="100%" height="100%" className="border-0" showToolbar={false}>
                 <EppPdfDocument employeeName={employeeName} employeeDocument={employeeDocument} companyName={companyName} data={data} />
               </PDFViewer>
             ) : (
@@ -122,6 +159,20 @@ export default function EmployeeEppsPdfDialog({ employeeId, employeeName, employ
 
         <DialogFooter className="mt-2">
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cerrar</Button>
+          {data.length > 0 && (
+            <PDFDownloadLink
+              document={<EppPdfDocument employeeName={employeeName} employeeDocument={employeeDocument} companyName={companyName} data={data} />}
+              fileName={`Seguimiento_EPPs_${employeeName.replace(/\s+/g, "_")}.pdf`}
+              className="flex"
+            >
+              {({ loading }) => (
+                <Button disabled={loading} className="w-full sm:w-auto">
+                  {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+                  Descargar PDF
+                </Button>
+              )}
+            </PDFDownloadLink>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

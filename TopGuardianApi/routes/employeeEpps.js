@@ -10,13 +10,19 @@ const { authenticateToken } = require('../middleware/auth');
   } catch (e) {
     // Si la columna ya existe o la tabla no está creada aún, se ignora el error
   }
+  try {
+    await db.runAsync('ALTER TABLE employee_epps ADD COLUMN quantity INTEGER DEFAULT 1');
+  } catch (e) {}
+  try {
+    await db.runAsync('ALTER TABLE employee_epps ADD COLUMN signature_data BLOB');
+  } catch (e) {}
 })();
 
 // GET: Obtener EPPs asignados a un empleado específico
 router.get('/employee/:employeeId', authenticateToken, async (req, res) => {
   try {
     const sql = `
-      SELECT ee.id, ee.employee_id, ee.epp_id, ee.delivery_date, e.name as epp_name, u.name as delivered_by_user_name
+      SELECT ee.id, ee.employee_id, ee.epp_id, ee.delivery_date, ee.quantity, ee.signature_data, e.name as epp_name, u.name as delivered_by_user_name
       FROM employee_epps ee
       JOIN epps e ON ee.epp_id = e.id
       LEFT JOIN users u ON ee.delivered_by_user_id = u.id
@@ -32,16 +38,19 @@ router.get('/employee/:employeeId', authenticateToken, async (req, res) => {
 
 // POST: Asignar uno o múltiples EPPs a un empleado con una fecha de entrega
 router.post('/', authenticateToken, async (req, res) => {
-  const { employeeId, eppIds, deliveryDate } = req.body;
-  if (!employeeId || !eppIds || !Array.isArray(eppIds) || !deliveryDate) {
+  const { employeeId, epps, eppIds, deliveryDate, signatureData } = req.body;
+  const elements = epps || (eppIds ? eppIds.map(id => ({ id, quantity: 1 })) : null);
+  
+  if (!employeeId || !elements || !Array.isArray(elements) || !deliveryDate) {
     return res.status(400).json({ error: 'Datos incompletos' });
   }
 
   try {
-    for (const eppId of eppIds) {
+    const sigBuffer = signatureData ? Buffer.from(signatureData) : null;
+    for (const epp of elements) {
       await db.runAsync(
-        'INSERT INTO employee_epps (employee_id, epp_id, delivery_date, delivered_by_user_id) VALUES (?, ?, ?, ?)',
-        [employeeId, eppId, deliveryDate, req.user?.id || null]
+        'INSERT INTO employee_epps (employee_id, epp_id, delivery_date, delivered_by_user_id, quantity, signature_data) VALUES (?, ?, ?, ?, ?, ?)',
+        [employeeId, epp.id, deliveryDate, req.user?.id || null, epp.quantity || 1, sigBuffer]
       );
     }
 
@@ -55,9 +64,10 @@ router.post('/', authenticateToken, async (req, res) => {
       const io = req.app.get('io');
       if (io) {
         const userName = req.user?.name || req.user?.username || 'Sistema';
+        const totalItems = elements.reduce((acc, curr) => acc + (curr.quantity || 1), 0);
         io.emit('company_activity', {
           companyId: String(employee.company_id),
-          message: `Se entregaron ${eppIds.length} EPP(s) a ${employee.first_name} ${employee.last_name} por ${userName}`,
+          message: `Se entregaron ${totalItems} EPP(s) a ${employee.first_name} ${employee.last_name} por ${userName}`,
           timestamp: new Date().toISOString()
         });
       }
