@@ -133,6 +133,7 @@ router.post('/', authenticateToken, async (req, res) => {
         message: `Nuevo empleado registrado: ${firstName} ${lastName} por ${req.user.name || req.user.username}`,
         timestamp: new Date().toISOString()
       });
+      io.emit('employee_roster_update', String(companyId));
     }
 
     res.status(201).json(employee);
@@ -244,6 +245,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
         message: `Datos actualizados para el empleado: ${employee.first_name} ${employee.last_name} por ${req.user.name || req.user.username}`,
         timestamp: new Date().toISOString()
       });
+      io.emit('employee_roster_update', String(employee.company_id));
     }
 
     res.json(employee);
@@ -284,6 +286,7 @@ router.delete('/:id', authenticateToken, async (req, res) => {
           message: `Empleado eliminado de la nómina: ${employee.first_name} ${employee.last_name} por ${req.user.name || req.user.username}`,
           timestamp: new Date().toISOString()
         });
+        io.emit('employee_roster_update', String(employee.company_id));
       }
     }
 

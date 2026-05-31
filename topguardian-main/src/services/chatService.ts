@@ -49,6 +49,7 @@ class ChatService {
   private forceLogoutCallback?: () => void;
   private companyActivityListeners: Set<(activity: CompanyActivity) => void> = new Set();
   private globalNotificationListeners: Set<(notification: GlobalNotification) => void> = new Set();
+  private employeeRosterUpdateListeners: Set<(companyId: string) => void> = new Set();
   private _companyActivities: CompanyActivity[] = [];
 
   onForceLogout(callback?: () => void) {
@@ -133,6 +134,13 @@ class ChatService {
     };
   }
 
+  subscribeToEmployeeRosterUpdate(fn: (companyId: string) => void) {
+    this.employeeRosterUpdateListeners.add(fn);
+    return () => {
+      this.employeeRosterUpdateListeners.delete(fn);
+    };
+  }
+
   async connect(userId: number) {
     this.currentUserId = userId;
     
@@ -187,6 +195,11 @@ class ChatService {
     // Notificaciones globales (ej. Calendario)
     this.socket.on('global_notification', (notification: GlobalNotification) => {
       this.globalNotificationListeners.forEach(fn => fn(notification));
+    });
+    
+    // Actualización de nómina de empleados
+    this.socket.on('employee_roster_update', (companyId: string) => {
+      this.employeeRosterUpdateListeners.forEach(fn => fn(companyId));
     });
 
     // Escuchar cuando el otro usuario lee mis mensajes

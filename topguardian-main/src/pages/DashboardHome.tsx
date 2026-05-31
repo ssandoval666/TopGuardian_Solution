@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
-import { BarChart3, Users, Activity, GraduationCap } from "lucide-react";
+import { Users, Activity, GraduationCap } from "lucide-react";
 import { useApp } from "@/contexts/AppContext";
 import { apiFetchCompanyTrainingStats, type CompanyTraining } from "@/services/companyTrainingApi";
+import { apiFetchEmployees } from "@/services/employeeApi";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { chatService, type CompanyActivity } from "@/services/chatService";
 
@@ -17,16 +18,22 @@ const DashboardHome = () => {
   const [activeUsers, setActiveUsers] = useState(0);
   const [trainingUsers, setTrainingUsers] = useState(0);
   const [recentActivities, setRecentActivities] = useState<CompanyActivity[]>([]);
+  const [employeeCount, setEmployeeCount] = useState(0);
 
   useEffect(() => {
     if (!selectedCompany) return;
     setIsLoading(true);
     setShowPendingList(false);
     setRecentActivities(chatService.getCompanyActivities(selectedCompany.id)); // Cargar historial de la memoria
-    apiFetchCompanyTrainingStats(selectedCompany.id).then((res) => {
-      setCompleted(res.completed);
-      setPending(res.pending);
-      setPendingList(res.pendingList);
+
+    Promise.all([
+      apiFetchCompanyTrainingStats(selectedCompany.id),
+      apiFetchEmployees({ companyId: selectedCompany.id, page: 1, pageSize: 1 })
+    ]).then(([statsRes, empRes]) => {
+      setCompleted(statsRes.completed);
+      setPending(statsRes.pending);
+      setPendingList(statsRes.pendingList);
+      setEmployeeCount(empRes.total);
     }).finally(() => setIsLoading(false));
   }, [selectedCompany]);
 
@@ -53,10 +60,22 @@ const DashboardHome = () => {
     return unsub;
   }, [selectedCompany]);
 
+  // Suscripción al WebSocket para actualización en tiempo real de la nómina
+  useEffect(() => {
+    const unsub = chatService.subscribeToEmployeeRosterUpdate((companyId) => {
+      if (selectedCompany && String(companyId) === String(selectedCompany.id)) {
+        apiFetchEmployees({ companyId: selectedCompany.id, page: 1, pageSize: 1 }).then(res => {
+          setEmployeeCount(res.total);
+        });
+      }
+    });
+    return unsub;
+  }, [selectedCompany]);
+
   const dynamicStats = [
     { label: "Usuarios Activos", value: activeUsers.toString(), icon: Users, change: "En línea" },
     { label: "Operarios (Training)", value: trainingUsers.toString(), icon: GraduationCap, change: "Conectados ahora" },
-    { label: "Reportes", value: "142", icon: BarChart3, change: "+3.1%" },
+    { label: "Empleados", value: employeeCount.toString(), icon: Users, change: "En la nómina" },
     { label: "Sesiones hoy", value: "1,024", icon: Activity, change: "+18%" },
   ];
 

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -47,6 +48,8 @@ export default function EmployeeEppsDialog({ employeeId, employeeName, open, onO
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasSignature, setHasSignature] = useState(false);
+  const [deletingEppId, setDeletingEppId] = useState<number | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const loadData = async () => {
     if (!employeeId) return;
@@ -184,14 +187,18 @@ export default function EmployeeEppsDialog({ employeeId, employeeName, open, onO
     }
   };
 
-  const handleRemove = async (id: number) => {
-    if (!confirm("¿Eliminar asignación de EPP?")) return;
+  const confirmRemove = async () => {
+    if (!deletingEppId) return;
+    setIsDeleting(true);
     try {
-      await apiCall(`/employee-epps/${id}`, { method: "DELETE" });
+      await apiCall(`/employee-epps/${deletingEppId}`, { method: "DELETE" });
       toast.success("Asignación eliminada");
+      setDeletingEppId(null);
       loadData();
     } catch (error: any) {
       toast.error(error.message || "Error al eliminar");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -244,7 +251,7 @@ export default function EmployeeEppsDialog({ employeeId, employeeName, open, onO
                         <TableCell className="font-medium">{epp.epp_name}</TableCell>
                         <TableCell>{epp.delivery_date}</TableCell>
                         <TableCell className="text-right">
-                          <Button variant="ghost" size="icon" className="text-destructive h-8 w-8 hover:text-destructive" onClick={() => handleRemove(epp.id)}>
+                          <Button variant="ghost" size="icon" className="text-destructive h-8 w-8 hover:text-destructive" onClick={() => setDeletingEppId(epp.id)}>
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </TableCell>
@@ -350,6 +357,24 @@ export default function EmployeeEppsDialog({ employeeId, employeeName, open, onO
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={!!deletingEppId} onOpenChange={(open) => !open && setDeletingEppId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar asignación de EPP?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción eliminará de forma permanente el EPP asignado a este empleado. Esta acción no se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmRemove} disabled={isDeleting} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
