@@ -148,10 +148,11 @@ const CapacitacionDetailPage: React.FC = () => {
       try {
         let byteArray: number[] = [];
         if (signatureData) {
-          const base64Data = signatureData.split(',')[1];
-          const binaryStr = atob(base64Data);
-          byteArray = new Array(binaryStr.length);
-          for (let i = 0; i < binaryStr.length; i++) byteArray[i] = binaryStr.charCodeAt(i);
+          // Optimización: Uso de fetch para decodificar base64 a un ArrayBuffer de forma asíncrona,
+          // evitando bloquear el hilo principal con un bucle sincrónico.
+          const response = await fetch(signatureData);
+          const buffer = await response.arrayBuffer();
+          byteArray = Array.from(new Uint8Array(buffer));
         }
         
         await apiService.registrarCapacitacion({
