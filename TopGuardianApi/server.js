@@ -289,6 +289,7 @@ const initDatabase = () => {
       `CREATE INDEX IF NOT EXISTS idx_employees_company ON employees(company_id)`,
       `CREATE INDEX IF NOT EXISTS idx_employee_trainings_emp ON employee_trainings(employee_id)`,
       `CREATE INDEX IF NOT EXISTS idx_employee_records_emp ON employee_training_records(employee_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_company_trainings_company_due ON company_trainings(company_id, due_date)`,
       `CREATE INDEX IF NOT EXISTS idx_employee_epps_emp ON employee_epps(employee_id)`,
       `CREATE INDEX IF NOT EXISTS idx_planos_company ON planos(company_id)`,
       `CREATE INDEX IF NOT EXISTS idx_checklists_company ON checklist_visits(company_id)`

@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../database');
 const { authenticateToken, authorizeRole } = require('../middleware/auth');
+const { isAfter, isBefore, parseISO, startOfDay, subMonths } = require('date-fns');
 
 // Helper para convertir el JSON array a Buffer de SQLite
 function getBuffer(data) {
@@ -438,6 +439,53 @@ router.put('/:id/questionnaire', authenticateToken, authorizeRole(['Administrado
 });
 
 // ---- Company Trainings ----
+
+router.get('/company/:companyId/alerts', authenticateToken, async (req, res) => {
+  try {
+    const { companyId } = req.params;
+    const assignments = await db.allAsync(`
+      SELECT ct.id, ct.company_id, ct.training_id, ct.assigned_date, ct.completed_date,
+             ct.due_date, ct.recurrence, c.name AS company_name, t.title AS training_title
+      FROM company_trainings ct
+      JOIN companies c ON c.id = ct.company_id
+      JOIN trainings t ON t.id = ct.training_id
+      WHERE ct.company_id = ? AND ct.recurrence <> 'none' AND ct.due_date IS NOT NULL
+      ORDER BY ct.due_date ASC
+    `, [companyId]);
+
+    const today = startOfDay(new Date());
+    const alerts = assignments.flatMap((assignment) => {
+      const dueDate = parseISO(assignment.due_date);
+      if (Number.isNaN(dueDate.getTime())) return [];
+
+      let status;
+      if (isAfter(today, startOfDay(dueDate))) {
+        status = 'expired';
+      } else {
+        const reminderDate = startOfDay(subMonths(dueDate, 1));
+        if (isBefore(today, reminderDate)) return [];
+        status = 'expiring_soon';
+      }
+
+      return [{
+        id: assignment.id,
+        companyId: String(assignment.company_id),
+        companyName: assignment.company_name,
+        trainingId: String(assignment.training_id),
+        trainingTitle: assignment.training_title,
+        assignedDate: assignment.assigned_date,
+        completedDate: assignment.completed_date,
+        dueDate: assignment.due_date,
+        recurrence: assignment.recurrence,
+        status,
+      }];
+    });
+
+    res.json(alerts);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 /**
  * @swagger

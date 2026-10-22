@@ -133,8 +133,8 @@ export const apiUnassignCompanyTraining = async (id: string): Promise<void> => {
 
 /** Fetch alerts for a specific company */
 export const apiFetchCompanyTrainingAlerts = async (companyId: string): Promise<CompanyTraining[]> => {
-  const trainings = await apiCall(`/trainings/company/${companyId}`);
-  return trainings.filter((a: CompanyTraining) => a.status === "expired" || a.status === "expiring_soon");
+  const alerts = await apiCall(`/trainings/company/${companyId}/alerts`);
+  return alerts.map(mapCompanyTraining);
 };
 
 /** Dashboard stats for a company */

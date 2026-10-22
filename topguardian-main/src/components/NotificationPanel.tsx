@@ -15,7 +15,7 @@ interface Notification {
 }
 
 const alertToNotification = (a: CompanyTraining): Notification => ({
-  id: `alert-${a.id}`,
+  id: `alert-${a.id}-${a.dueDate ?? "no-date"}`,
   title: a.status === "expired" ? "Capacitación vencida" : "Próxima a vencer",
   message: `${a.trainingTitle} — Empresa: ${a.companyName} — vence el ${a.dueDate ?? "—"}`,
   time: a.status === "expired" ? "Venció" : "Próxima a vencer",
@@ -31,10 +31,30 @@ const NotificationPanel = () => {
 
   useEffect(() => {
     if (!selectedCompany) return;
-    apiFetchCompanyTrainingAlerts(selectedCompany.id).then((alerts) => {
-      const alertNotifs = alerts.map(alertToNotification);
-      setAlerts(alertNotifs);
-    });
+
+    let active = true;
+    const refreshAlerts = async () => {
+      try {
+        const companyAlerts = await apiFetchCompanyTrainingAlerts(selectedCompany.id);
+        if (!active) return;
+        setAlerts((previous) => {
+          const previousById = new Map(previous.map((notification) => [notification.id, notification]));
+          return companyAlerts.map((alert) => {
+            const notification = alertToNotification(alert);
+            return { ...notification, read: previousById.get(notification.id)?.read ?? false };
+          });
+        });
+      } catch (error) {
+        console.error("Error loading training alerts:", error);
+      }
+    };
+
+    refreshAlerts();
+    const intervalId = window.setInterval(refreshAlerts, 5 * 60 * 1000);
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+    };
   }, [selectedCompany]);
 
   useEffect(() => {
