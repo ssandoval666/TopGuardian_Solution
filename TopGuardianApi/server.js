@@ -2,35 +2,52 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
+const helmet = require('helmet');
 const swaggerUi = require('swagger-ui-express');
 const swaggerJsdoc = require('swagger-jsdoc');
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs');
+const jwt = require('jsonwebtoken');
+const { parseCookies } = require('./middleware/sessionCookies');
 
 const app = express();
 const server = http.createServer(app);
+const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:8080,http://localhost:8081,http://127.0.0.1:8080,http://127.0.0.1:8081')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+const corsOptions = {
+  origin(origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error('Origen no permitido por CORS.'));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'X-CSRF-Token', 'Authorization']
+};
 const io = new Server(server, {
   cors: {
-    origin: "*", // Nota: En producción cambia esto por la URL de tu frontend (ej: 'http://localhost:3000')
-    methods: ["GET", "POST"]
+    origin: allowedOrigins,
+    methods: ['GET', 'POST'],
+    credentials: true
   }
 });
 const PORT = process.env.PORT || 9000;
+const JWT_SECRET = process.env.JWT_SECRET || (process.env.NODE_ENV === 'production' ? null : 'dev-only-change-this-secret');
+if (!JWT_SECRET) throw new Error('JWT_SECRET es obligatorio en producción.');
 
 // Exponer socket.io a las rutas
 app.set('io', io);
 
 // Middleware
-app.use(cors());
+app.use(helmet());
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 
 // Custom JSON parser with error handling
 app.use(express.json({
   limit: '50mb', // Aumentado para permitir la subida de archivos como array de bytes
-  verify: (req, res, buf, encoding) => {
-    // This captures the raw body before parsing
-    req.rawBody = buf.toString(encoding);
-  }
 }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
@@ -545,9 +562,16 @@ const swaggerOptions = {
     components: {
       securitySchemes: {
         bearerAuth: {
-          type: 'http',
-          scheme: 'bearer',
-          bearerFormat: 'JWT',
+          type: 'apiKey',
+          in: 'cookie',
+          name: 'tg_access',
+          description: 'HttpOnly administrative session cookie.',
+        },
+        trainingSessionCookie: {
+          type: 'apiKey',
+          in: 'cookie',
+          name: 'tg_training_access',
+          description: 'HttpOnly employee training session cookie.',
         },
       },
     },
@@ -565,6 +589,7 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 // Routes
 const authRoutes = require('./routes/auth');
+const { authenticateToken, authorizeRole } = require('./middleware/auth');
 const companyRoutes = require('./routes/companies');
 const userRoutes = require('./routes/users');
 const employeeRoutes = require('./routes/employees');
@@ -581,7 +606,7 @@ const eppRoutes = require('./routes/epp');
 const employeeEppsRoutes = require('./routes/employeeEpps');
 
 // Override para asegurar que el chat muestre TODOS los usuarios reales de la DB sin hardcode
-app.get('/chat/users', (req, res) => {
+app.get('/chat/users', authenticateToken, (req, res) => {
   const sql = `
     SELECT u.id, u.name, u.username, IFNULL(p.is_online, 0) as online
     FROM users u
@@ -595,6 +620,32 @@ app.get('/chat/users', (req, res) => {
 });
 
 app.use('/auth', authRoutes);
+app.use(authenticateToken);
+app.use((req, res, next) => {
+  if (req.path === '/health') return next();
+  const isTrainingRoute = req.path.startsWith('/trainings/employee-app/')
+    || req.path.endsWith('/trainings/employee/record')
+    || /^\/trainings\/\d+\/full$/.test(req.path);
+
+  if (req.user.type === 'training_app') {
+    const allowedTrainingRead = req.method === 'GET'
+      && (/^\/trainings\/employee-app\/\d+$/.test(req.path)
+        || /^\/trainings\/\d+\/full$/.test(req.path));
+    const allowedTrainingWrite = req.method === 'POST'
+      && req.path === '/trainings/employee/record';
+    if (allowedTrainingRead || allowedTrainingWrite) return next();
+    return res.status(403).json({ error: 'La sesión de empleado no permite acceder a este recurso.' });
+  }
+
+  if (isTrainingRoute) {
+    return res.status(403).json({ error: 'Se requiere una sesión de empleado para este recurso.' });
+  }
+
+  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) {
+    return authorizeRole(['Administrador', 'Editor'])(req, res, next);
+  }
+  next();
+});
 app.use('/companies', companyRoutes);
 app.use('/users', userRoutes);
 app.use('/employees', employeeRoutes);
@@ -619,17 +670,8 @@ app.get('/health', (req, res) => {
 app.use((err, req, res, next) => {
   // Handle JSON parsing errors
   if (err instanceof SyntaxError && err.status === 400) {
-    console.error('JSON Parsing Error:');
-    console.error('  Method:', req.method);
-    console.error('  URL:', req.url);
-    console.error('  Content-Type:', req.get('content-type'));
-    console.error('  Raw Body:', req.rawBody);
-    console.error('  Error:', err.message);
-    return res.status(400).json({ 
-      error: 'Invalid JSON in request body',
-      details: err.message,
-      receivedBody: req.rawBody
-    });
+    console.warn('Invalid JSON request body.');
+    return res.status(400).json({ error: 'JSON inválido en la solicitud.' });
   }
   
   console.error('Error:', err.stack);
@@ -642,13 +684,35 @@ app.use((err, req, res, next) => {
 // =========================================
 const activeUserSockets = new Map(); // Mapa para rastrear la conexión principal de cada usuario
 
+io.use((socket, next) => {
+  const cookies = parseCookies(socket.handshake.headers.cookie);
+  const sessionType = socket.handshake.auth?.session;
+  if (!['admin', 'training'].includes(sessionType)) return next(new Error('Tipo de sesión no válido.'));
+  const trainingSession = sessionType === 'training';
+  const accessToken = trainingSession ? cookies.tg_training_access : cookies.tg_access;
+  if (!accessToken) return next(new Error('Sesión no autenticada.'));
+
+  jwt.verify(accessToken, JWT_SECRET, (err, decoded) => {
+    if (err) return next(new Error('Sesión inválida o expirada.'));
+    if (trainingSession !== (decoded.type === 'training_app')) {
+      return next(new Error('Tipo de sesión no autorizado.'));
+    }
+    socket.data.user = decoded;
+    next();
+  });
+});
+
 io.on('connection', (socket) => {
   let currentUserId = null;
+  const sessionUser = socket.data.user;
 
   console.log(`[WebSocket] Nuevo usuario conectado: ${socket.id}`);
 
   // El usuario se une a una sala personal utilizando su ID para recibir mensajes privados
   socket.on('join_chat', (userId) => {
+    if (sessionUser.type === 'training_app' || String(userId) !== String(sessionUser.id)) {
+      return socket.disconnect(true);
+    }
     // Forzar el cierre de sesión en otras ubicaciones/pestañas del mismo usuario
     socket.to(userId.toString()).emit('force_logout');
 
@@ -688,18 +752,22 @@ io.on('connection', (socket) => {
 
   // Escuchar cuando se envía un nuevo mensaje
   socket.on('send_message', (data) => {
+    if (sessionUser.type === 'training_app' || !data || typeof data !== 'object') return;
     const { from_user_id, to_user_id, message_text } = data;
+    const text = typeof message_text === 'string' ? message_text.trim() : '';
+    if (String(from_user_id) !== String(sessionUser.id) || !Number.isInteger(Number(to_user_id)) || Number(to_user_id) <= 0
+      || !text || text.length > 5000) return;
     
     // 1. Guardar el mensaje en la tabla chat_messages de tu SQLite
     const sql = 'INSERT INTO chat_messages (from_user_id, to_user_id, message_text) VALUES (?, ?, ?)';
-    db.run(sql, [from_user_id, to_user_id, message_text], function(err) {
+    db.run(sql, [sessionUser.id, to_user_id, text], function(err) {
       if (err) {
         console.error('[WebSocket] Error guardando mensaje en la BD:', err);
         return;
       }
       
       // 2. Emitir en tiempo real al destinatario y al remitente
-      const newMessage = { id: this.lastID, from_user_id, to_user_id, message_text, timestamp: new Date().toISOString(), read_status: false };
+      const newMessage = { id: this.lastID, from_user_id: sessionUser.id, to_user_id, message_text: text, timestamp: new Date().toISOString(), read_status: false };
       io.to(to_user_id.toString()).emit('receive_message', newMessage);
       socket.emit('receive_message', newMessage); // Confirma al front que se guardó
     });
@@ -707,6 +775,7 @@ io.on('connection', (socket) => {
 
   // Escuchar a los operarios de la app de Training
   socket.on('join_training', () => {
+    if (sessionUser.type !== 'training_app') return;
     socket.join('training_app_users');
     const count = io.sockets.adapter.rooms.get('training_app_users')?.size || 0;
     io.emit('training_online_count_update', count);
@@ -714,8 +783,17 @@ io.on('connection', (socket) => {
 
   // Escuchar cuando un usuario avisa que ha leído los mensajes
   socket.on('messages_read', (data) => {
+    if (sessionUser.type === 'training_app' || !data || String(data.to_user_id) !== String(sessionUser.id)) return;
     const { from_user_id, to_user_id } = data;
-    io.to(from_user_id.toString()).emit('messages_read_by_user', { read_by: to_user_id });
+    db.get(
+      'SELECT id FROM chat_messages WHERE from_user_id = ? AND to_user_id = ? LIMIT 1',
+      [from_user_id, sessionUser.id],
+      (err, message) => {
+        if (!err && message) {
+          io.to(String(from_user_id)).emit('messages_read_by_user', { read_by: sessionUser.id });
+        }
+      }
+    );
   });
 
   // Detectar antes de que se desconecte para saber si saldrá de la app de Training

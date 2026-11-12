@@ -20,98 +20,73 @@ export const useAuth = () => {
 };
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(() => {
-    const stored = localStorage.getItem("tg_user");
-    return stored ? JSON.parse(stored) : null;
-  });
-  const [isLoading, setIsLoading] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const refreshIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const activityRef = useRef<number>(Date.now());
   const socketRef = useRef<Socket | null>(null);
 
   const logout = useCallback(() => {
+    const logoutRequest = apiService.logout();
     setUser(null);
-    localStorage.removeItem("tg_user");
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    if (refreshIntervalRef.current) clearInterval(refreshIntervalRef.current);
+    logoutRequest.catch((error) => console.error("[Auth] No se pudo cerrar la sesión en el servidor:", error));
   }, []);
 
   const resetSessionTimeout = useCallback(() => {
     activityRef.current = Date.now();
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    timeoutRef.current = setTimeout(() => {
-      logout();
-    }, SESSION_TIMEOUT_MS);
-  }, [logout]);
-
-  const startTokenRefresh = useCallback((currentUser: User) => {
-    if (refreshIntervalRef.current) clearInterval(refreshIntervalRef.current);
-    // Refresh token every 50 minutes (before 1h expiry)
-    refreshIntervalRef.current = setInterval(async () => {
-      const result = await apiService.refreshToken(currentUser.refreshToken);
-      if (result) {
-        setUser((prev) => {
-          if (!prev) return null;
-          const updated = { ...prev, token: result.token, refreshToken: result.refreshToken };
-          localStorage.setItem("tg_user", JSON.stringify(updated));
-          return updated;
-        });
-      } else {
-        logout();
-      }
-    }, 50 * 60 * 1000);
+    timeoutRef.current = setTimeout(logout, SESSION_TIMEOUT_MS);
   }, [logout]);
 
   const login = useCallback(async (ruc: string, documentNumber: string): Promise<boolean> => {
     setIsLoading(true);
     try {
-      const result = await apiService.login(ruc, documentNumber);
-      if (result) {
-        setUser(result);
-        localStorage.setItem("tg_user", JSON.stringify(result));
-        resetSessionTimeout();
-        startTokenRefresh(result);
-        return true;
-      }
-      return false;
+      const sessionUser = await apiService.login(ruc, documentNumber);
+      setUser(sessionUser);
+      resetSessionTimeout();
+      return true;
     } finally {
       setIsLoading(false);
     }
-  }, [resetSessionTimeout, startTokenRefresh]);
+  }, [resetSessionTimeout]);
 
-  // Activity listeners for session timeout reset
+  useEffect(() => {
+    localStorage.removeItem("tg_user");
+    apiService.getSession()
+      .then(setUser)
+      .catch((error) => {
+        if (!(error instanceof Error && error.message.includes("(401)"))) {
+          console.error("[Auth] No se pudo restaurar la sesión:", error);
+        }
+      })
+      .finally(() => setIsLoading(false));
+  }, []);
+
   useEffect(() => {
     if (!user) return;
     resetSessionTimeout();
-    startTokenRefresh(user);
 
     const handleActivity = () => resetSessionTimeout();
     const events = ["mousedown", "keydown", "scroll", "touchstart"];
-    events.forEach((e) => window.addEventListener(e, handleActivity));
+    events.forEach((event) => window.addEventListener(event, handleActivity));
     return () => {
-      events.forEach((e) => window.removeEventListener(e, handleActivity));
+      events.forEach((event) => window.removeEventListener(event, handleActivity));
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
-      if (refreshIntervalRef.current) clearInterval(refreshIntervalRef.current);
     };
-  }, [user, resetSessionTimeout, startTokenRefresh]);
+  }, [user, resetSessionTimeout]);
 
-  // WebSocket para reportar presencia en tiempo real
   useEffect(() => {
     if (user) {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:9000';
-      socketRef.current = io(apiUrl);
-      socketRef.current.on('connect', () => {
-        socketRef.current?.emit('join_training');
-      });
-    } else {
-      if (socketRef.current) {
-        socketRef.current.disconnect();
-        socketRef.current = null;
-      }
+      const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:9000";
+      socketRef.current = io(apiUrl, { withCredentials: true, auth: { session: "training" } });
+      socketRef.current.on("connect", () => socketRef.current?.emit("join_training"));
+    } else if (socketRef.current) {
+      socketRef.current.disconnect();
+      socketRef.current = null;
     }
     return () => {
-      if (socketRef.current) socketRef.current.disconnect();
+      socketRef.current?.disconnect();
     };
   }, [user]);
 

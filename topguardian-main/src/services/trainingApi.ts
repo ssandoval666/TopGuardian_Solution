@@ -1,6 +1,6 @@
 // Real API service for Trainings with JWT support
 
-import { tokenService } from "./tokenService";
+import { sessionFetch, tokenService } from "./tokenService";
 
 // Base API URL
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:9000';
@@ -22,7 +22,7 @@ const apiCall = async (endpoint: string, options: RequestInit = {}): Promise<any
     (config.headers as any).Authorization = `Bearer ${token}`;
   }
 
-  const response = await fetch(url, config);
+  const response = await sessionFetch(url, config);
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({ error: 'Network error' }));

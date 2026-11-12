@@ -1,29 +1,12 @@
-// Servicio de gestión de tokens JWT con auto-refresh
-
-type TokenRefreshCallback = () => Promise<{ accessToken: string; refreshToken: string; expiresIn: number }>;
+type SessionRefreshCallback = () => Promise<{ csrfToken: string; expiresIn: number }>;
 
 class TokenService {
-  private accessToken: string | null = null;
-  private refreshToken: string | null = null;
+  private csrfToken: string | null = null;
   private refreshTimerId: ReturnType<typeof setTimeout> | null = null;
-  private onRefresh: TokenRefreshCallback | null = null;
+  private onRefresh: SessionRefreshCallback | null = null;
   private onSessionExpired: (() => void) | null = null;
 
-  constructor() {
-    // Restaurar tokens de localStorage al iniciar
-    this.accessToken = localStorage.getItem("access_token");
-    this.refreshToken = localStorage.getItem("refresh_token");
-    const expiresAt = localStorage.getItem("token_expires_at");
-
-    if (this.accessToken && this.refreshToken && expiresAt) {
-      const remaining = Number(expiresAt) - Date.now();
-      if (remaining > 0) {
-        this.scheduleRefresh(remaining);
-      }
-    }
-  }
-
-  setOnRefresh(callback: TokenRefreshCallback) {
+  setOnRefresh(callback: SessionRefreshCallback) {
     this.onRefresh = callback;
   }
 
@@ -31,37 +14,25 @@ class TokenService {
     this.onSessionExpired = callback;
   }
 
-  getAccessToken(): string | null {
-    return this.accessToken;
+  setCsrfToken(token: string, expiresIn?: number) {
+    this.csrfToken = token || null;
+    if (expiresIn) this.scheduleRefresh(expiresIn * 1000);
   }
 
-  getRefreshToken(): string | null {
-    return this.refreshToken;
+  getCsrfToken() {
+    return this.csrfToken;
   }
 
-  isAuthenticated(): boolean {
-    return !!this.accessToken;
+  getAccessToken(): null {
+    return null;
   }
 
-  setTokens(accessToken: string, refreshToken: string, expiresIn: number) {
-    this.accessToken = accessToken;
-    this.refreshToken = refreshToken;
-
-    localStorage.setItem("access_token", accessToken);
-    localStorage.setItem("refresh_token", refreshToken);
-    localStorage.setItem("token_expires_at", String(Date.now() + expiresIn * 1000));
-
-    this.scheduleRefresh(expiresIn * 1000);
+  isAuthenticated() {
+    return !!this.csrfToken;
   }
 
   clearTokens() {
-    this.accessToken = null;
-    this.refreshToken = null;
-
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("refresh_token");
-    localStorage.removeItem("token_expires_at");
-
+    this.csrfToken = null;
     if (this.refreshTimerId) {
       clearTimeout(this.refreshTimerId);
       this.refreshTimerId = null;
@@ -69,41 +40,44 @@ class TokenService {
   }
 
   private scheduleRefresh(expiresInMs: number) {
-    if (this.refreshTimerId) {
-      clearTimeout(this.refreshTimerId);
-    }
-
-    // Refrescar cuando quede el 20% del tiempo (ej: a los 48 min de 60 min)
+    if (this.refreshTimerId) clearTimeout(this.refreshTimerId);
     const refreshAt = Math.max(expiresInMs * 0.8, 5000);
-
     this.refreshTimerId = setTimeout(async () => {
-      await this.doRefresh();
+      if (!this.onRefresh) return this.expireSession();
+      try {
+        const session = await this.onRefresh();
+        this.setCsrfToken(session.csrfToken, session.expiresIn);
+      } catch (error) {
+        console.error("[Session] No se pudo renovar la sesión:", error);
+        this.expireSession();
+      }
     }, refreshAt);
-
-    console.log(`[TokenService] Auto-refresh programado en ${Math.round(refreshAt / 1000)}s`);
   }
 
-  private async doRefresh() {
-    if (!this.refreshToken || !this.onRefresh) {
-      this.handleSessionExpired();
-      return;
-    }
-
-    try {
-      console.log("[TokenService] Refrescando token...");
-      const result = await this.onRefresh();
-      this.setTokens(result.accessToken, result.refreshToken, result.expiresIn);
-      console.log("[TokenService] Token refrescado exitosamente");
-    } catch (error) {
-      console.error("[TokenService] Error al refrescar token:", error);
-      this.handleSessionExpired();
-    }
-  }
-
-  private handleSessionExpired() {
+  private expireSession() {
     this.clearTokens();
     this.onSessionExpired?.();
   }
 }
 
 export const tokenService = new TokenService();
+
+export const sessionFetch = (input: RequestInfo | URL, init: RequestInit = {}) => {
+  const headers = new Headers(init.headers);
+  const method = (init.method || "GET").toUpperCase();
+  const csrfCookie = typeof document === "undefined"
+    ? null
+    : document.cookie.split("; ").find((cookie) => cookie.startsWith("tg_csrf="))?.slice("tg_csrf=".length);
+  const csrfToken = tokenService.getCsrfToken() || csrfCookie || null;
+
+  if (!["GET", "HEAD", "OPTIONS"].includes(method) && csrfToken) {
+    headers.set("X-CSRF-Token", csrfToken);
+    tokenService.setCsrfToken(csrfToken);
+  }
+
+  return fetch(input, {
+    ...init,
+    headers,
+    credentials: "include",
+  });
+};

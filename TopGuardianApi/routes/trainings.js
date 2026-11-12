@@ -336,7 +336,7 @@ router.delete('/:id', authenticateToken, authorizeRole(['Administrador', 'Editor
  *     summary: Get full training details including PDF and Questionnaire for Employee App
  *     tags: [Trainings]
  *     security:
- *       - bearerAuth: []
+ *       - trainingSessionCookie: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -350,6 +350,14 @@ router.delete('/:id', authenticateToken, authorizeRole(['Administrador', 'Editor
 router.get('/:id/full', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
+    if (req.user.type === 'training_app') {
+      const assignment = await db.getAsync(
+        `SELECT 1 FROM company_trainings WHERE company_id = ? AND training_id = ?
+         UNION SELECT 1 FROM employee_trainings WHERE employee_id = ? AND training_id = ?`,
+        [req.user.companyId, id, req.user.id, id]
+      );
+      if (!assignment) return res.status(404).json({ error: 'Capacitación no asignada.' });
+    }
     const training = await db.getAsync('SELECT * FROM trainings WHERE id = ?', [id]);
     if (!training) return res.status(404).json({ error: 'Capacitación no encontrada' });
 
@@ -939,38 +947,45 @@ router.delete('/employee/:id', authenticateToken, authorizeRole(['Administrador'
  *     summary: Register completed training by employee
  *     tags: [Employee Trainings]
  *     security:
- *       - bearerAuth: []
+ *       - trainingSessionCookie: []
  *     responses:
  *       201:
  *         description: Training recorded successfully
  */
 router.post('/employee/record', authenticateToken, async (req, res) => {
   try {
-    const { ruc, documentNumber, trainingId, score, signatureData, completionDate } = req.body;
+    const { trainingId, score, signatureData, completionDate } = req.body;
+    if (req.user.type !== 'training_app') {
+      return res.status(403).json({ error: 'Se requiere una sesión de empleado.' });
+    }
 
-    // 1. Validar Empresa y Empleado
-    const company = await db.getAsync('SELECT id FROM companies WHERE ruc = ?', [ruc]);
-    if (!company) return res.status(404).json({ error: 'Empresa no encontrada' });
-
-    const employee = await db.getAsync('SELECT id FROM employees WHERE document_number = ? AND company_id = ?', [documentNumber, company.id]);
-    if (!employee) return res.status(404).json({ error: 'Empleado no encontrado' });
+    const employeeId = req.user.id;
+    const assignment = await db.getAsync(
+      `SELECT et.* FROM employee_trainings et
+       WHERE et.employee_id = ? AND et.training_id = ?
+       UNION
+       SELECT ct.* FROM company_trainings ct
+       WHERE ct.company_id = ? AND ct.training_id = ?`,
+      [employeeId, trainingId, req.user.companyId, trainingId]
+    );
+    if (!assignment) return res.status(403).json({ error: 'La capacitación no está asignada al empleado.' });
 
     // 2. Insertar historial de la evaluación con la firma
     const sigBuffer = getBuffer(signatureData);
     await db.runAsync(
       'INSERT INTO employee_training_records (employee_id, training_id, completion_date, score, signature_data) VALUES (?, ?, ?, ?, ?)',
-      [employee.id, trainingId, completionDate, score, sigBuffer]
+      [employeeId, trainingId, completionDate, score, sigBuffer]
     );
 
     // 3. Marcar como completado en la asignación principal y calcular próximo vencimiento
-    const assignment = await db.getAsync('SELECT * FROM employee_trainings WHERE employee_id = ? AND training_id = ?', [employee.id, trainingId]);
-    if (assignment) {
+    const employeeAssignment = await db.getAsync('SELECT * FROM employee_trainings WHERE employee_id = ? AND training_id = ?', [employeeId, trainingId]);
+    if (employeeAssignment) {
       let dueDate = null;
-      if (assignment.recurrence !== 'none') {
+      if (employeeAssignment.recurrence !== 'none') {
         const completed = new Date(completionDate);
-        if (assignment.recurrence === 'monthly') {
+        if (employeeAssignment.recurrence === 'monthly') {
           completed.setMonth(completed.getMonth() + 1);
-        } else if (assignment.recurrence === 'yearly') {
+        } else if (employeeAssignment.recurrence === 'yearly') {
           completed.setFullYear(completed.getFullYear() + 1);
         }
         dueDate = completed.toISOString().split('T')[0];
@@ -978,7 +993,7 @@ router.post('/employee/record', authenticateToken, async (req, res) => {
 
       await db.runAsync(
         'UPDATE employee_trainings SET completed_date = ?, due_date = ? WHERE id = ?',
-        [completionDate, dueDate, assignment.id]
+        [completionDate, dueDate, employeeAssignment.id]
       );
     }
 
@@ -996,7 +1011,7 @@ router.post('/employee/record', authenticateToken, async (req, res) => {
  *     summary: Get trainings for employee app (company + employee specific)
  *     tags: [Employee Trainings]
  *     security:
- *       - bearerAuth: []
+ *       - trainingSessionCookie: []
  *     parameters:
  *       - in: path
  *         name: employeeId
@@ -1010,8 +1025,14 @@ router.post('/employee/record', authenticateToken, async (req, res) => {
 router.get('/employee-app/:employeeId', authenticateToken, async (req, res) => {
   try {
     const { employeeId } = req.params;
+    if (String(req.user.id) !== String(employeeId)) {
+      return res.status(403).json({ error: 'No puedes consultar las capacitaciones de otro empleado.' });
+    }
     const employee = await db.getAsync('SELECT company_id FROM employees WHERE id = ?', [employeeId]);
     if (!employee) return res.status(404).json({ error: 'Empleado no encontrado' });
+    if (String(employee.company_id) !== String(req.user.companyId)) {
+      return res.status(403).json({ error: 'La sesión no corresponde a esta empresa.' });
+    }
 
     // 1. Obtener capacitaciones de la empresa
     const companyTrainings = await db.allAsync(`

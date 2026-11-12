@@ -17,7 +17,7 @@ const CapacitacionesPage: React.FC = () => {
     if (!user) return;
     setLoading(true);
     try {
-      const res = await apiService.getCapacitaciones(user.id, user.token);
+      const res = await apiService.getCapacitaciones(user.id);
       setCapacitaciones(res.capacitaciones);
     } catch (err) {
       console.error(err);

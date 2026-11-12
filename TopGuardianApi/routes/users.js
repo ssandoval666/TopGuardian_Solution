@@ -107,6 +107,9 @@ router.get('/list', authenticateToken, async (req, res) => {
 router.post('/', authenticateToken, authorizeRole(['Administrador']), async (req, res) => {
   try {
     const { name, username, email, role, phone, password } = req.body;
+    if (typeof password !== 'string' || password.length < 12) {
+      return res.status(400).json({ error: 'La contraseña debe tener al menos 12 caracteres.' });
+    }
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const result = await db.runAsync(
@@ -168,6 +171,9 @@ router.put('/:id', authenticateToken, authorizeRole(['Administrador']), async (r
   try {
     const { id } = req.params;
     const { name, username, email, role, phone, active, password } = req.body;
+    if (password !== undefined && password !== '' && (typeof password !== 'string' || password.length < 12)) {
+      return res.status(400).json({ error: 'La contraseña debe tener al menos 12 caracteres.' });
+    }
 
     let updateFields = [];
     let params = [];

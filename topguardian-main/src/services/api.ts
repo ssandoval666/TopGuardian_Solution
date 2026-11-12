@@ -1,9 +1,16 @@
 // Real API service with JWT support
 
-import { tokenService } from "./tokenService";
+import { sessionFetch, tokenService } from "./tokenService";
 
 // Base API URL
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:9000';
+
+export class ApiError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
 
 // Headers with JWT
 const authHeaders = () => {
@@ -18,6 +25,7 @@ const authHeaders = () => {
 export const apiCall = async (endpoint: string, options: RequestInit = {}): Promise<any> => {
   const url = `${API_BASE_URL}${endpoint}`;
   const config: RequestInit = {
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
       ...options.headers,
@@ -31,11 +39,11 @@ export const apiCall = async (endpoint: string, options: RequestInit = {}): Prom
     (config.headers as any).Authorization = `Bearer ${token}`;
   }
 
-  const response = await fetch(url, config);
+  const response = await sessionFetch(url, config);
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({ error: 'Network error' }));
-    throw new Error(errorData.error || `HTTP ${response.status}`);
+    throw new ApiError(errorData.error || `HTTP ${response.status}`, response.status);
   }
 
   if (response.status === 204) {
@@ -60,8 +68,7 @@ export interface LoginResponse {
     username: string;
     avatar?: string;
   };
-  accessToken: string;
-  refreshToken: string;
+  csrfToken: string;
   expiresIn: number; // seconds
 }
 
@@ -72,11 +79,18 @@ export const apiLogin = async (username: string, password: string): Promise<Logi
   });
 };
 
-export const apiRefreshToken = async (refreshToken: string): Promise<{ accessToken: string; refreshToken: string; expiresIn: number }> => {
+export const apiRefreshToken = async (): Promise<{ csrfToken: string; expiresIn: number }> => {
   return apiCall('/auth/refresh', {
     method: 'POST',
-    body: JSON.stringify({ refreshToken }),
   });
+};
+
+export const apiFetchSession = async (): Promise<{ user: LoginResponse["user"]; csrfToken: string; expiresIn: number }> => {
+  return apiCall('/auth/session');
+};
+
+export const apiLogout = async (): Promise<void> => {
+  await apiCall('/auth/logout', { method: 'POST' });
 };
 
 // ---- Companies endpoint ----

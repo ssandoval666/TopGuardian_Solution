@@ -4,9 +4,18 @@ const bcrypt = require('bcryptjs');
 const router = express.Router();
 const db = require('../database');
 const rateLimit = require('express-rate-limit');
+const {
+  clearSessionCookies,
+  issueSessionCookies,
+  parseCookies,
+  validateCsrf
+} = require('../middleware/sessionCookies');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-for-dev-only-change-it';
-const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'your-refresh-secret-key-for-dev';
+const JWT_SECRET = process.env.JWT_SECRET || (process.env.NODE_ENV === 'production' ? null : 'dev-only-change-this-secret');
+const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || (process.env.NODE_ENV === 'production' ? null : 'dev-only-change-this-refresh-secret');
+if (!JWT_SECRET || !JWT_REFRESH_SECRET) {
+  throw new Error('JWT_SECRET y JWT_REFRESH_SECRET son obligatorios en producción.');
+}
 
 // Límite de peticiones para rutas de Login (Prevención de ataques de Fuerza Bruta)
 const loginLimiter = rateLimit({
@@ -45,9 +54,7 @@ const loginLimiter = rateLimit({
  *               properties:
  *                 user:
  *                   type: object
- *                 accessToken:
- *                   type: string
- *                 refreshToken:
+ *                 csrfToken:
  *                   type: string
  *                 expiresIn:
  *                   type: number
@@ -75,6 +82,12 @@ router.post('/login', loginLimiter, (req, res) => {
       const accessToken = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: '1h' });
       const refreshToken = jwt.sign({ id: user.id }, JWT_REFRESH_SECRET, { expiresIn: '7d' });
 
+      const csrfToken = issueSessionCookies(res, {
+        accessToken,
+        refreshToken,
+        expiresIn: 3600
+      });
+
       res.json({
         user: {
           id: user.id,
@@ -83,8 +96,7 @@ router.post('/login', loginLimiter, (req, res) => {
           email: user.email,
           role: user.role
         },
-        accessToken,
-        refreshToken,
+        csrfToken,
         expiresIn: 3600
       });
     });
@@ -97,17 +109,6 @@ router.post('/login', loginLimiter, (req, res) => {
  *   post:
  *     summary: Refresh access token
  *     tags: [Auth]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - refreshToken
- *             properties:
- *               refreshToken:
- *                 type: string
  *     responses:
  *       200:
  *         description: Token refreshed
@@ -115,11 +116,14 @@ router.post('/login', loginLimiter, (req, res) => {
  *         description: Invalid refresh token
  */
 router.post('/refresh', (req, res) => {
-  const { refreshToken } = req.body;
+  if (!validateCsrf(req)) {
+    return res.status(403).json({ error: 'Validación CSRF fallida.' });
+  }
+  const { tg_refresh: refreshToken } = parseCookies(req.headers.cookie);
+  if (!refreshToken) return res.status(401).json({ error: 'Sesión expirada.' });
 
   try {
     const decoded = jwt.verify(refreshToken, JWT_REFRESH_SECRET);
-
     db.get('SELECT * FROM users WHERE id = ? AND active = 1', [decoded.id], (err, user) => {
       if (err) return res.status(500).json({ error: err.message });
       if (!user) return res.status(401).json({ error: 'Usuario no encontrado' });
@@ -130,19 +134,45 @@ router.post('/refresh', (req, res) => {
         username: user.username,
         role: user.role
       };
-
       const accessToken = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: '1h' });
       const newRefreshToken = jwt.sign({ id: user.id }, JWT_REFRESH_SECRET, { expiresIn: '7d' });
-
-      res.json({
+      const csrfToken = issueSessionCookies(res, {
         accessToken,
         refreshToken: newRefreshToken,
         expiresIn: 3600
       });
+      res.json({ csrfToken, expiresIn: 3600 });
     });
-  } catch (err) {
+  } catch {
     res.status(401).json({ error: 'Token de refresco inválido' });
   }
+});
+
+router.get('/session', (req, res) => {
+  const { tg_access: accessToken } = parseCookies(req.headers.cookie);
+  if (!accessToken) return res.status(401).json({ error: 'Sesión no autenticada.' });
+
+  jwt.verify(accessToken, JWT_SECRET, (verifyError, decoded) => {
+    if (verifyError) return res.status(401).json({ error: 'Sesión inválida o expirada.' });
+    db.get('SELECT id, name, username, email, role FROM users WHERE id = ? AND active = 1', [decoded.id], (err, user) => {
+      if (err) return res.status(500).json({ error: 'No se pudo validar la sesión.' });
+      if (!user) return res.status(401).json({ error: 'Usuario no encontrado.' });
+      const cookies = parseCookies(req.headers.cookie);
+      res.json({
+        user,
+        csrfToken: cookies.tg_csrf || '',
+        expiresIn: Math.max(decoded.exp - Math.floor(Date.now() / 1000), 0)
+      });
+    });
+  });
+});
+
+router.post('/logout', (req, res) => {
+  if (!validateCsrf(req)) {
+    return res.status(403).json({ error: 'Validación CSRF fallida.' });
+  }
+  clearSessionCookies(res);
+  res.status(204).end();
 });
 
 /**
@@ -182,17 +212,64 @@ router.post('/training-login', loginLimiter, async (req, res) => {
     // 3. Generar JWT
     const token = jwt.sign({ id: employee.id, companyId: company.id, role: 'Employee', type: 'training_app' }, JWT_SECRET, { expiresIn: '24h' });
 
+    const csrfToken = issueSessionCookies(res, {
+      accessToken: token,
+      expiresIn: 24 * 60 * 60,
+      training: true
+    });
+
     res.json({
       employee: {
         id: String(employee.id), firstName: employee.first_name, lastName: employee.last_name,
-        documentNumber: employee.document_number, companyId: String(company.id), companyName: company.name
+        documentNumber: employee.document_number, companyId: String(company.id), companyName: company.name,
+        ruc: company.ruc
       },
-      accessToken: token
+      csrfToken
     });
   } catch (err) {
     console.error("Error en training-login:", err);
     res.status(500).json({ error: 'Error interno del servidor' });
   }
+});
+
+router.get('/training-session', async (req, res) => {
+  const { tg_training_access: accessToken } = parseCookies(req.headers.cookie);
+  if (!accessToken) return res.status(401).json({ error: 'Sesión no autenticada.' });
+
+  try {
+    const decoded = jwt.verify(accessToken, JWT_SECRET);
+    if (decoded.type !== 'training_app') return res.status(401).json({ error: 'Sesión no válida.' });
+    const employee = await db.getAsync(
+      `SELECT e.id, e.first_name, e.last_name, e.document_number, e.company_id, c.name AS company_name, c.ruc
+       FROM employees e JOIN companies c ON c.id = e.company_id
+       WHERE e.id = ? AND e.active = 1`,
+      [decoded.id]
+    );
+    if (!employee) return res.status(401).json({ error: 'Empleado no encontrado.' });
+    const cookies = parseCookies(req.headers.cookie);
+    res.json({
+      employee: {
+        id: String(employee.id),
+        firstName: employee.first_name,
+        lastName: employee.last_name,
+        documentNumber: employee.document_number,
+        companyId: String(employee.company_id),
+        companyName: employee.company_name,
+        ruc: employee.ruc
+      },
+      csrfToken: cookies.tg_training_csrf || ''
+    });
+  } catch {
+    res.status(401).json({ error: 'Sesión inválida o expirada.' });
+  }
+});
+
+router.post('/training-logout', (req, res) => {
+  if (!validateCsrf(req, true)) {
+    return res.status(403).json({ error: 'Validación CSRF fallida.' });
+  }
+  clearSessionCookies(res, true);
+  res.status(204).end();
 });
 
 module.exports = router;

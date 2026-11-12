@@ -1,8 +1,10 @@
 export interface User {
   id: string;
   username: string;
-  token: string;
-  refreshToken: string;
+  documentNumber: string;
+  ruc: string;
+  companyId: string;
+  companyName: string;
 }
 
 export interface Capacitacion {

@@ -53,6 +53,7 @@ const UsersPage = () => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<UserDetail | null>(null);
   const [form, setForm] = useState(emptyForm);
+  const [newUserPassword, setNewUserPassword] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
   const [deleteTarget, setDeleteTarget] = useState<UserDetail | null>(null);
@@ -103,12 +104,14 @@ const UsersPage = () => {
   const openCreate = () => {
     setEditingUser(null);
     setForm(emptyForm);
+    setNewUserPassword("");
     setDialogOpen(true);
   };
 
   const openEdit = (user: UserDetail) => {
     setEditingUser(user);
     setForm({ name: user.name, username: user.username, email: user.email, role: user.role || "", phone: user.phone || "", active: user.active });
+    setNewUserPassword("");
     setDialogOpen(true);
   };
 
@@ -117,13 +120,17 @@ const UsersPage = () => {
       toast.error("Nombre, usuario y email son obligatorios");
       return;
     }
+    if (!editingUser && newUserPassword.length < 12) {
+      toast.error("La contraseña inicial debe tener al menos 12 caracteres");
+      return;
+    }
     setIsSaving(true);
     try {
       if (editingUser) {
         await apiUpdateUser(editingUser.id, form);
         toast.success("Usuario actualizado");
       } else {
-        await apiCreateUser(form);
+        await apiCreateUser({ ...form, password: newUserPassword });
         toast.success("Usuario creado");
       }
       setDialogOpen(false);
@@ -290,6 +297,20 @@ const UsersPage = () => {
                 <Input id="email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="Email" />
               </div>
             </div>
+            {!editingUser && (
+              <div className="space-y-2">
+                <Label htmlFor="password">Contraseña inicial *</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  autoComplete="new-password"
+                  minLength={12}
+                  value={newUserPassword}
+                  onChange={(e) => setNewUserPassword(e.target.value)}
+                  required
+                />
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="role">Rol</Label>

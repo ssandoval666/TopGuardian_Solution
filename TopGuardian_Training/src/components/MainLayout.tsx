@@ -16,6 +16,7 @@ import {
 import shieldLogo from "@/assets/shield-logo.png";
 import { NavLink } from "@/components/NavLink";
 import { BookOpen, LogOut } from "lucide-react";
+import { Loader2 } from "lucide-react";
 
 const AppSidebarContent: React.FC = () => {
   const { state } = useSidebar();
@@ -49,8 +50,11 @@ const AppSidebarContent: React.FC = () => {
 };
 
 const MainLayout: React.FC = () => {
-  const { isAuthenticated, logout, user } = useAuth();
+  const { isAuthenticated, isLoading, logout, user } = useAuth();
 
+  if (isLoading) {
+    return <div className="flex min-h-screen items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>;
+  }
   if (!isAuthenticated) return <Navigate to="/login" replace />;
 
   return (

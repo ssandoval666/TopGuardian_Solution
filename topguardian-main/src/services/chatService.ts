@@ -146,7 +146,7 @@ class ChatService {
     
     // Conectar WebSocket (usa tu variable de entorno o fallback a localhost)
     const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:9000';
-    this.socket = io(apiUrl);
+    this.socket = io(apiUrl, { withCredentials: true, auth: { session: "admin" } });
 
     this.socket.on('connect', () => {
       this.socket?.emit('join_chat', userId);

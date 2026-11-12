@@ -20,7 +20,7 @@ const LoginPage = () => {
       await login(username, password);
       navigate("/dashboard");
     } catch {
-      toast.error("Credenciales inválidas. Usa usuario: ssandoval, contraseña: 123");
+      toast.error("Credenciales inválidas");
     }
   };
 

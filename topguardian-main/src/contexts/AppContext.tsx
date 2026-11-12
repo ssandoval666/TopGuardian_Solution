@@ -118,9 +118,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Cargar empresas desde API
   useEffect(() => {
     if (!user) return;
-    apiFetchCompanies(user.id).then((data) => {
+    apiFetchCompanies().then((data) => {
       setCompanies(data);
-      const stored = localStorage.getItem("selected_company");
+      const stored = sessionStorage.getItem("selected_company");
       const initial = stored ? data.find((c) => c.id === stored) || data[0] : data[0];
       if (initial) setSelectedCompanyState(initial);
     });
@@ -132,7 +132,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [loadMenu]);
 
   const setSelectedCompany = useCallback((company: Company) => {
-    localStorage.setItem("selected_company", company.id);
+    try {
+      sessionStorage.setItem("selected_company", company.id);
+    } catch {
+      // Ignorar errores si el navegador bloquea sessionStorage.
+    }
     setSelectedCompanyState(company);
   }, []);
 

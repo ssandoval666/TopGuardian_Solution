@@ -1,131 +1,51 @@
 # TopGuardian API
 
-A Node.js REST API for the TopGuardian safety management system, built with Express.js, SQLite, and JWT authentication.
+A Node.js REST API for the TopGuardian safety management system, built with Express, SQLite, and cookie-based JWT sessions.
 
 ## Features
 
-- **JWT Authentication**: Secure login with JSON Web Tokens
-- **OpenAPI Documentation**: Complete API documentation with Swagger UI
-- **SQLite Database**: File-based database for easy deployment
-- **RESTful Endpoints**: Full CRUD operations for all entities
-- **Mock Data**: Pre-populated with sample data for testing
-
-## API Endpoints
-
-### Authentication
-- `POST /auth/login` - User login
-- `POST /auth/refresh` - Refresh access token
-
-### Companies
-- `GET /companies` - Get companies for user
-- `GET /companies/list` - Paginated company list
-- `POST /companies` - Create company
-- `PUT /companies/{id}` - Update company
-- `DELETE /companies/{id}` - Delete company
-
-### Users
-- `GET /users/list` - Paginated user list
-- `POST /users` - Create user
-- `PUT /users/{id}` - Update user
-- `DELETE /users/{id}` - Delete user
-
-### Employees
-- `GET /employees` - Get employees for company
-- `POST /employees` - Create employee
-- `PUT /employees/{id}` - Update employee
-- `DELETE /employees/{id}` - Delete employee
-
-### Trainings
-- `GET /trainings` - Paginated training list
-- `GET /trainings/all` - All trainings
-- `POST /trainings` - Create training
-- `PUT /trainings/{id}` - Update training
-- `DELETE /trainings/{id}` - Delete training
-
-### Company Trainings
-- `GET /trainings/company/{companyId}` - Get trainings for company
-- `POST /trainings/company` - Assign training to company
-- `PUT /trainings/company/{id}/complete` - Mark training as completed
-
-### Employee Trainings
-- `GET /trainings/employee/{employeeId}` - Get trainings for employee
-- `POST /trainings/employee` - Assign training to employee
-- `PUT /trainings/employee/{id}/complete` - Mark training as completed
-
-### Planos (Floor Plans)
-- `GET /planos` - Get planos for company
-- `POST /planos` - Create plano
-- `PUT /planos/{id}` - Update plano
-- `GET /planos/{id}/download` - Download plano file
-- `DELETE /planos/{id}` - Delete plano
-
-### Checklists
-- `GET /checklists/items` - Get checklist items
-- `POST /checklists/items` - Create checklist item
-- `PUT /checklists/items/{id}` - Update checklist item
-- `DELETE /checklists/items/{id}` - Delete checklist item
-- `GET /checklists/visits` - Get checklist visits for company
-- `POST /checklists/visits` - Create checklist visit
-- `PUT /checklists/visits/{id}` - Update checklist visit
-- `DELETE /checklists/visits/{id}` - Delete checklist visit
-
-### Risk Matrices
-- `GET /risk-matrices` - Get risk matrices for company
-- `POST /risk-matrices` - Create risk matrix
-- `PUT /risk-matrices/{id}` - Update risk matrix
-- `DELETE /risk-matrices/{id}` - Delete risk matrix
-
-### Menu
-- `GET /menu` - Get menu for company and user
+- HttpOnly session cookies for administrative users and employees
+- CSRF validation for state-changing requests
+- CORS allowlist with credential support
+- Role-based write access for administrative API routes
+- OpenAPI documentation and SQLite persistence
 
 ## Installation
 
-1. Clone the repository
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-3. Start the server:
-   ```bash
-   npm start
-   ```
-   Or for development:
-   ```bash
-   npm run dev
-   ```
+```bash
+npm install
+npm run dev
+```
 
-## Usage
-
-The server will start on `http://localhost:3000`
-
-### API Documentation
-
-Access the OpenAPI documentation at: `http://localhost:3000/api-docs`
-
-### Default User
-
-A default user is created on first run:
-- **Username**: ssandoval
-- **Password**: 123
-- **Role**: administrador
-
-## Database
-
-The API uses SQLite with a file-based database (`TopGuardian_Api.db`). The database is automatically created and populated with mock data on first run.
+The API listens on `http://localhost:9000` by default. Swagger UI is available at `/api-docs`.
 
 ## Authentication
 
-All endpoints except `/auth/login`, `/auth/refresh`, and `/health` require authentication. Include the JWT token in the Authorization header:
+- `POST /auth/login` - Administrative login
+- `GET /auth/session` - Restore the current administrative session
+- `POST /auth/refresh` - Renew the administrative session
+- `POST /auth/logout` - End the administrative session
+- `POST /auth/training-login` - Employee portal login
+- `GET /auth/training-session` - Restore the employee portal session
+- `POST /auth/training-logout` - End the employee portal session
 
-```
-Authorization: Bearer <your-jwt-token>
-```
+The API sets separate `HttpOnly` cookies for the two applications. Frontend code must not read or store access/refresh tokens. Requests must include credentials; state-changing authenticated requests must send the CSRF token returned by login/session in the `X-CSRF-Token` header.
 
-## Technologies
+All business API routes require a valid session. Administrative writes require `Administrador` or `Editor`. Employee sessions can only access assigned course content and submit their own completion record.
 
-- **Node.js** - Runtime environment
-- **Express.js** - Web framework
-- **SQLite3** - Database
-- **JWT** - Authentication
-- **bcryptjs** - Password hashing
-- **Swagger/OpenAPI** - API documentation
+## Deployment configuration
+
+Set these environment variables for production:
+
+- `JWT_SECRET` and `JWT_REFRESH_SECRET`: unique, strong secrets. Both are required in production.
+- `CSRF_SECRET`: optional separate key for signed CSRF tokens; defaults to `JWT_SECRET`.
+- `CORS_ORIGINS`: comma-separated exact origins of the frontends, such as `https://admin.example.com,https://training.example.com`.
+- `COOKIE_SECURE`: defaults to `true` in production; keep enabled when using HTTPS.
+- `COOKIE_SAME_SITE`: defaults to `lax`. Use `none` only for cross-site frontend/API deployments and only with `COOKIE_SECURE=true`.
+- `COOKIE_DOMAIN`: optional cookie domain if the deployment uses sibling subdomains.
+
+Local development allows the Vite origins on ports 8080 and 8081. Adjust `CORS_ORIGINS` when using different hosts or ports.
+
+## Database
+
+SQLite uses `TopGuardian_Api.db` by default. Development seed data is only intended for local testing; do not deploy sample credentials.

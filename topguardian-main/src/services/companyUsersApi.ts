@@ -1,6 +1,6 @@
 // Real API service for Company Users
 
-import { tokenService } from "./tokenService";
+import { sessionFetch, tokenService } from "./tokenService";
 import { apiFetchUserList, type UserDetail } from "./userApi";
 
 // Base API URL
@@ -23,7 +23,7 @@ const apiCall = async (endpoint: string, options: RequestInit = {}): Promise<any
     (config.headers as any).Authorization = `Bearer ${token}`;
   }
 
-  const response = await fetch(url, config);
+  const response = await sessionFetch(url, config);
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({ error: 'Network error' }));

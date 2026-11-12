@@ -1,7 +1,7 @@
 /* AuthContext v2 */
 import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
 import { tokenService } from "@/services/tokenService";
-import { apiLogin, apiRefreshToken } from "@/services/api";
+import { ApiError, apiFetchSession, apiLogin, apiLogout, apiRefreshToken } from "@/services/api";
 
 interface User {
   id: string;
@@ -27,32 +27,50 @@ export const useAuth = () => {
 };
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(() => {
-    const stored = localStorage.getItem("auth_user");
-    return stored ? JSON.parse(stored) : null;
-  });
-  const [isLoading, setIsLoading] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Configurar auto-refresh callback
   useEffect(() => {
     tokenService.setOnRefresh(async () => {
-      const rt = tokenService.getRefreshToken();
-      if (!rt) throw new Error("No refresh token");
-      return apiRefreshToken(rt);
+      const session = await apiRefreshToken();
+      tokenService.setCsrfToken(session.csrfToken, session.expiresIn);
+      return session;
     });
 
     tokenService.setOnSessionExpired(() => {
       console.log("[Auth] Sesión expirada, cerrando sesión...");
       setUser(null);
-      localStorage.removeItem("auth_user");
-      tokenService.clearTokens();
+      apiLogout().catch((error) => console.error("[Auth] No se pudieron limpiar las cookies de sesión:", error));
     });
+
+    for (const key of ["auth_user", "access_token", "refresh_token", "token_expires_at"]) {
+      localStorage.removeItem(key);
+      sessionStorage.removeItem(key);
+    }
+
+    apiFetchSession()
+      .catch(async (error) => {
+        if (!(error instanceof ApiError && error.status === 401)) throw error;
+        const refreshed = await apiRefreshToken();
+        tokenService.setCsrfToken(refreshed.csrfToken, refreshed.expiresIn);
+        return apiFetchSession();
+      })
+      .then(({ user: sessionUser, csrfToken, expiresIn }) => {
+        setUser(sessionUser);
+        tokenService.setCsrfToken(csrfToken, expiresIn);
+      })
+      .catch((error) => {
+        tokenService.clearTokens();
+        if (!(error instanceof ApiError && error.status === 401)) {
+          console.error("[Auth] No se pudo restaurar la sesión:", error);
+        }
+      })
+      .finally(() => setIsLoading(false));
   }, []);
 
   const handleLoginResponse = useCallback((response: Awaited<ReturnType<typeof apiLogin>>) => {
-    const { user: userData, accessToken, refreshToken, expiresIn } = response;
-    tokenService.setTokens(accessToken, refreshToken, expiresIn);
-    localStorage.setItem("auth_user", JSON.stringify(userData));
+    const { user: userData, csrfToken, expiresIn } = response;
+    tokenService.setCsrfToken(csrfToken, expiresIn);
     setUser(userData);
   }, []);
 
@@ -66,16 +84,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [handleLoginResponse]);
 
-
-
   const logout = useCallback(() => {
+    const logoutRequest = apiLogout();
     tokenService.clearTokens();
-    localStorage.removeItem("auth_user");
-    localStorage.removeItem("selected_company");
     setUser(null);
+    sessionStorage.removeItem("selected_company");
+    logoutRequest.catch((error) => console.error("[Auth] No se pudo cerrar la sesión en el servidor:", error));
   }, []);
 
-  const isAuthenticated = !!user && tokenService.isAuthenticated();
+  const isAuthenticated = !!user;
 
   return (
     <AuthContext.Provider value={{ user, isLoading, isAuthenticated, login, logout }}>

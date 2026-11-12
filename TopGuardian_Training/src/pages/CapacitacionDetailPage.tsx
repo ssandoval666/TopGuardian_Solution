@@ -48,7 +48,7 @@ const CapacitacionDetailPage: React.FC = () => {
 
   useEffect(() => {
     if (codigo && user) {
-      apiService.getCapacitacionCompleta(codigo, user.token).then(data => {
+      apiService.getCapacitacionCompleta(codigo).then(data => {
         setFullTraining(data);
         // Map API questionnaire to local state
         if (data.questionnaire && data.questionnaire.questions) {
@@ -156,13 +156,10 @@ const CapacitacionDetailPage: React.FC = () => {
         }
         
         await apiService.registrarCapacitacion({
-          ruc: (user as any).ruc,
-          documentNumber: (user as any).documentNumber,
           trainingId: codigo,
           score: pct, // Enviamos el porcentaje real validado en este instante
           signatureData: byteArray,
-          completionDate: new Date().toISOString().split('T')[0],
-          token: user.token
+          completionDate: new Date().toISOString().split('T')[0]
         });
         setSubmitted(true);
         setCurrentStep(3);
